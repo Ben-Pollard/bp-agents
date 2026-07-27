@@ -1,0 +1,1 @@
+<!-- Style: headings tight, bullets terse, single lines. No multi-clause sentences. No filler words. -->

@@ -1,0 +1,109 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow"
+    },
+    "bash": {
+      "*": "allow",
+      "rm *": "ask",
+      "sudo *": "deny",
+      "chmod *": "ask",
+      "chown *": "deny",
+      "git push *": "ask",
+      "git reset --hard *": "ask",
+      "git clean *": "ask",
+      "git branch -D *": "ask",
+      "git push --force *": "deny",
+      "docker rm *": "ask",
+      "docker rmi *": "ask",
+      "kill *": "ask",
+      "shutdown *": "deny",
+      "reboot *": "deny"
+    },
+    "external_directory": {
+      "*": "deny",
+      "/tmp/opencode/**": "allow"
+    },
+    "webfetch": "allow",
+    "websearch": "allow",
+    "edit": "ask"
+  },
+  "agent": {
+    "afk": {
+      "model": "openrouter/deepseek/deepseek-v4-flash",
+      "mode": "primary",
+      "description": "Orchestrates AFK development work. Reads issues, dispatches implementer and reviewer subagents, updates tracker state.",
+      "permission": {
+        "read": { 
+          "*": "allow",
+          "*.env": "deny",
+          "*.env.*": "deny"
+        },
+        "edit": { "*": "allow" },
+        "bash": {
+          "*": "allow",
+          "git push *": "deny",
+          "git push --force *": "deny",
+          "git branch -D *": "deny"
+        },
+        "task": "allow",
+        "webfetch": "ask",
+        "websearch": "ask"
+      }
+    },
+    "implementer": {
+      "model": "openrouter/deepseek/deepseek-v4-flash",
+      "mode": "subagent",
+      "description": "Writes production code and tests via TDD. Commits locally but never pushes.",
+      "permission": {
+        "read": { 
+          "*": "allow",
+          "*.env": "deny",
+          "*.env.*": "deny"
+        },
+        "edit": { "*": "allow" },
+        "bash": {
+          "*": "allow",
+          "git push *": "deny",
+          "git push --force *": "deny",
+          "git branch -D *": "deny"
+        },
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny"
+      }
+    },
+    "reviewer": {
+      "model": "openrouter/deepseek/deepseek-v4-flash",
+      "mode": "subagent",
+      "description": "Reads code and diffs to review spec compliance and quality. Writes review outcomes.",
+      "permission": {
+        "read": { 
+          "*": "allow",
+          "*.env": "deny",
+          "*.env.*": "deny"
+        },
+        "edit": {
+          ".scratch/**": "allow",
+          "*": "deny"
+        },
+        "bash": {
+          "*": "allow",
+          "git push *": "deny",
+          "git push --force *": "deny",
+          "git branch -D *": "deny",
+          "git add *": "deny",
+          "git commit *": "deny"
+        },
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny"
+      }
+    }
+  }
+}
+
