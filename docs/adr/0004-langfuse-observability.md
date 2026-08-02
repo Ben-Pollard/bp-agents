@@ -1,0 +1,3 @@
+# Langfuse for Observability
+
+We chose Langfuse (self-hosted) as the observability platform for agent traces, orchestrator traces, contract exchanges, and future LLM evaluations over Jaeger (not LLM-aware), Grafana (requires building dashboards), or a custom dashboard (time-intensive build, worse results). Langfuse provides native LLM tracing with span-level detail, a LangGraph callback integration for orchestrator-level traces, and an eval platform we need for future agents. Plane.so handles ticket state visualization. The CLI handles human actions (approve/reject/realign/unblock). No custom front-end is built.

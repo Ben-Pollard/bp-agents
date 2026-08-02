@@ -1,0 +1,3 @@
+# Plane.so as Ticket Tracker
+
+We chose Plane.so (self-hosted, open-source project management) as the ticket tracker over local markdown files, SQLite with a custom schema, or GitHub Issues. Plane provides a REST API for work item CRUD with state management, built-in UI for ticket visualization, and self-hosts via Docker Compose — fitting the existing infrastructure model. Local markdown files are too fragile for programmatic state management by the orchestrator. GitHub Issues requires network access to a remote service. A custom SQLite-based tracker would add a bespoke front-end and API surface that Plane already provides. The `platform.tracker` adapter wraps Plane's API behind the `Tracker` ABC, making the choice swappable later.

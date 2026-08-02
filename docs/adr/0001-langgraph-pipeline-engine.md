@@ -1,0 +1,3 @@
+# LangGraph as Pipeline Engine
+
+We chose LangGraph (MIT-licensed, self-hosted) as the pipeline engine over hand-rolled state machines, Temporal, or Prefect. LangGraph provides built-in checkpointing (crash recovery via SQLite), retry policies, timeouts, human-in-the-loop via `interrupt()`/`Command(resume=...)`, and streaming events — all matching the acceptance criteria directly. The alternative of hand-rolling a state machine with atomic file writes would duplicate LangGraph's checkpointing, and Temporal/Prefect add operational overhead beyond a single-machine Docker Compose deployment.
