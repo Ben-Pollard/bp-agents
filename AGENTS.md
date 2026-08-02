@@ -22,4 +22,4 @@ Five canonical labels mapped to role strings. See `docs/agents/triage-labels.md`
 
 ### Domain docs
 
-Single-context repo. See `docs/agents/domain.md`.
+Multi-context repo. See `docs/agents/domain.md`.

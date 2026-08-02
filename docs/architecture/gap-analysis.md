@@ -1,6 +1,6 @@
 # Architecture Gap Analysis
 
-> Last updated: 2026-07-31
+> Last updated: 2026-08-02
 > Triggered by: `docs/requirements/orchestrator-agent-contract.md`
 
 ## Current State
@@ -17,99 +17,40 @@ Build from scratch:
 
 - **Platform layer** — LangGraph runner, tracker port, sandbox port, opencode HTTP client, CLI framework. Reusable across workflows.
 - **SDD workflow** — Specific LangGraph graph implementing the software development pipeline. Nested: feature graph contains ticket subgraphs.
-- **Tracker adapter** — Plane.so REST API wrapper for ticket discovery and state updates.
+- **Tracker port** — Generic tracker ABC in platform. SDD workflow provides the Plane adapter (`PlaneTracker`).
 - **Sandbox adapter** — `docker-py` wrapper with gVisor runtime, creating ephemeral containers per dispatch with HTTP forward proxy for egress enforcement.
 - **Agent client** — `httpx`-based wrapper for opencode's HTTP API (create session, prompt, stream events).
 - **Infrastructure** — Docker Compose managing orchestrator, Plane, Langfuse, SQLite, and egress proxy.
 
 ## Module Interfaces
 
-### `platform.contracts` — shared data types
+### `platform.contracts` — generic contract primitives
 
 ```python
-from enum import StrEnum
-from datetime import datetime
-from typing import TypedDict, Literal, NotRequired
-
-class TicketState(StrEnum):
-    READY = "ready"
-    IMPLEMENTING = "implementing"
-    AWAITING_REVIEW = "awaiting_review"
-    REVIEWING = "reviewing"
-    AWAITING_REVISION = "awaiting_revision"
-    REVISING = "revising"
-    AWAITING_VERIFICATION = "awaiting_verification"
-    VERIFYING = "verifying"
-    AWAITING_APPROVAL = "awaiting_approval"
-    BLOCKED = "blocked"
-    DONE = "done"
-
-class StageName(StrEnum):
-    TDD = "tdd"
-    CODE_REVIEW = "code_review"
-    REVISION = "revision"
-    MINIMIZING_CODE = "minimizing_code"
-    BEHAVIORAL_VERIFY = "behavioral_verify"
-    DETERMINISTIC_GATE = "deterministic_gate"
-    AWAIT_APPROVAL = "await_approval"
-    MERGE = "merge"
-
-class InterventionType(StrEnum):
-    APPROVE = "approve"
-    REJECT = "reject"
-    REALIGN = "realign"
-    UNBLOCK = "unblock"
-
-class ACChange(TypedDict):
-    timestamp: str
-    actor: str
-    ac_id: str
-    change: Literal["ADDED", "MODIFIED", "REMOVED"]
-    before: str | None
-    after: str | None
-
-class Intervention(TypedDict):
-    timestamp: str
-    actor: str
-    type: InterventionType
-    reason: str | None
+from typing import TypedDict, Literal
 
 class StageContract(TypedDict):
-    stage: StageName
+    stage: str
     direction: Literal["input", "output"]
     timestamp: str
     payload: dict
 ```
 
-### `platform.tracker` — Plane adapter
+### `platform.tracker` — tracker port (workflow-agnostic)
 
 ```python
 from abc import ABC, abstractmethod
 
-@dataclass
-class Ticket:
-    id: str                    # Plane work item UUID
-    name: str
-    description: str | None    # HTML body from Plane
-    state: TicketState         # mapped from Plane state group
-    project: str
-    labels: list[str]
-    created_at: datetime | None
-    updated_at: datetime | None
-
 class Tracker(ABC):
+    """Abstract tracker port. Each workflow provides its own adapter and work-item model."""
     @abstractmethod
-    async def list_ready(self, project: str) -> list[Ticket]: ...
+    async def list_ready(self, project: str) -> list[dict]: ...
     @abstractmethod
-    async def get_ticket(self, ticket_id: str) -> Ticket | None: ...
+    async def get_item(self, item_id: str) -> dict | None: ...
     @abstractmethod
-    async def update_state(self, ticket_id: str, state: TicketState) -> None: ...
+    async def update_state(self, item_id: str, state: str) -> None: ...
     @abstractmethod
-    async def add_comment(self, ticket_id: str, body: str) -> None: ...
-
-class PlaneTracker(Tracker):
-    """Adapter for Plane.so self-hosted REST API. Maps Plane state groups to TicketState."""
-    def __init__(self, base_url: str, api_key: str, workspace_slug: str): ...
+    async def add_comment(self, item_id: str, body: str) -> None: ...
 ```
 
 ### `platform.sandbox` — Docker/gVisor adapter
@@ -189,9 +130,59 @@ class CLI:
 #   symphony status [<ticket-id>]
 ```
 
-### `workflows.sdd.contracts` — stage-specific types
+### `workflows.sdd.contracts` — SDD-specific types and stage contracts
 
 ```python
+from enum import StrEnum
+from datetime import datetime
+from typing import TypedDict, Literal, NotRequired
+
+class TicketState(StrEnum):
+    """SDD pipeline ticket lifecycle states."""
+    READY = "ready"
+    IMPLEMENTING = "implementing"
+    AWAITING_REVIEW = "awaiting_review"
+    REVIEWING = "reviewing"
+    AWAITING_REVISION = "awaiting_revision"
+    REVISING = "revising"
+    AWAITING_VERIFICATION = "awaiting_verification"
+    VERIFYING = "verifying"
+    AWAITING_APPROVAL = "awaiting_approval"
+    BLOCKED = "blocked"
+    DONE = "done"
+
+class StageName(StrEnum):
+    """SDD pipeline skill stages."""
+    TDD = "tdd"
+    CODE_REVIEW = "code_review"
+    REVISION = "revision"
+    MINIMIZING_CODE = "minimizing_code"
+    BEHAVIORAL_VERIFY = "behavioral_verify"
+    DETERMINISTIC_GATE = "deterministic_gate"
+    AWAIT_APPROVAL = "await_approval"
+    MERGE = "merge"
+
+class InterventionType(StrEnum):
+    """SDD workflow human intervention actions."""
+    APPROVE = "approve"
+    REJECT = "reject"
+    REALIGN = "realign"
+    UNBLOCK = "unblock"
+
+class ACChange(TypedDict):
+    timestamp: str
+    actor: str
+    ac_id: str
+    change: Literal["ADDED", "MODIFIED", "REMOVED"]
+    before: str | None
+    after: str | None
+
+class Intervention(TypedDict):
+    timestamp: str
+    actor: str
+    type: InterventionType
+    reason: str | None
+
 class TicketSpec(TypedDict):
     ticket_id: str
     name: str
@@ -266,6 +257,30 @@ class SDDFeatureState(TypedDict):
     interventions: list[Intervention]
 ```
 
+### `workflows.sdd.tracker` — Plane adapter (SDD workflow)
+
+```python
+from dataclasses import dataclass
+from datetime import datetime
+
+@dataclass
+class Ticket:
+    """SDD work-item model. Plane work item UUID mapped to SDD TicketState."""
+    id: str
+    name: str
+    description: str | None    # HTML body from Plane
+    state: TicketState         # mapped from Plane state group
+    project: str
+    labels: list[str]
+    created_at: datetime | None
+    updated_at: datetime | None
+
+class PlaneTracker(Tracker):
+    """Adapter for Plane.so self-hosted REST API. Implements platform's Tracker port.
+    Maps Plane state groups to SDD TicketState."""
+    def __init__(self, base_url: str, api_key: str, workspace_slug: str): ...
+```
+
 ### `docker-compose.yml` — service layout
 
 ```yaml
@@ -334,6 +349,7 @@ LangGraph's `SqliteSaver` manages its own schema. The orchestrator's persisted s
 - Skills are copied from bp-agents `.agents/skills/` into workspace before dispatch. Skills retain `if git is available` git steps — git is unavailable in sandbox per egress policy.
 - Feature-level nested graph: one LangGraph graph per feature, containing ticket subgraphs (TDD → review → revision).
 - Node functions are idempotent: check for existing opencode session before creating, check for existing `outcome_path` before re-dispatching.
+- SDD-specific contracts (TicketState, StageName, InterventionType, ACChange, Intervention) live in `workflows.sdd`, not `platform.contracts`. Platform contracts are workflow-agnostic. The tracker port is platform-level; `PlaneTracker` and `Ticket` are SDD adapters.
 - Environment variable configuration via `.env` + `python-dotenv`. Docker Compose injects into containers. No custom config file format.
 - All services managed via Docker Compose: orchestrator, Plane, Langfuse, egress proxy.
 
@@ -349,7 +365,7 @@ LangGraph's `SqliteSaver` manages its own schema. The orchestrator's persisted s
 |---|---|
 | Module decomposition | Platform/workflow split; 7 modules defined |
 | Interface design | Concrete ABCs and TypedDicts for tracker, sandbox, agent_client, stage contracts |
-| Seam placement | Tracker and sandbox are ports with adapters; agent_client and CLI are single-impl |
+| Seam placement | Tracker port and sandbox are platform ports with workflow adapters. SDD-specific types (TicketState, StageName, InterventionType) live in workflows.sdd, not platform |
 | Dependency direction | Nodes receive deps via Runtime[Context]; platform layer has no workflow dependency |
 | Domain boundaries | Orchestrator ↔ Agent separated by JSON contracts and sandbox boundary |
 | Data models | TicketState, StageName, stage output types, SDDFeatureState defined |
