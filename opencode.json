@@ -65,7 +65,7 @@
     "implementer": {
       "model": "openrouter/deepseek/deepseek-v4-flash",
       "mode": "subagent",
-      "description": "Writes production code and tests via TDD. Commits locally but never pushes.",
+      "description": "Writes production code and tests",
       "permission": {
         "read": { 
           "*": "allow",

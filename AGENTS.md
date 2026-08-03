@@ -23,3 +23,9 @@ Five canonical labels mapped to role strings. See `docs/agents/triage-labels.md`
 ### Domain docs
 
 Multi-context repo. See `docs/agents/domain.md`.
+
+## Constitution
+### Building with containers
+- Testcontainers for integration tests involving containers
+- Real containers for E2E tests involving containers
+- `docker context show` tells you the current docker context 
