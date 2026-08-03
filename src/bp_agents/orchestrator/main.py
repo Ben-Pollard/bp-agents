@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 EGRESS_PROXY_URL = os.getenv("EGRESS_PROXY_URL", "http://egress-proxy:8081")
 PLANE_BASE_URL = os.getenv("PLANE_BASE_URL", "http://plane:80")
-LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://langfuse:3000")
 POLL_INTERVAL = int(os.getenv("BP_POLL_INTERVAL", "5"))
 PLANE_API_KEY = os.getenv("PLANE_API_KEY", "")
 PLANE_WORKSPACE_SLUG = os.getenv("PLANE_WORKSPACE_SLUG", "")
@@ -38,7 +37,6 @@ def main() -> None:
     logger.info("orchestrator starting...")
 
     wait_for_dependency(f"{PLANE_BASE_URL}/api/v1", "Plane")
-    wait_for_dependency(LANGFUSE_HOST, "Langfuse")
     wait_for_dependency(f"{EGRESS_PROXY_URL}/", "egress-proxy")
 
     tracker = PlaneTracker(

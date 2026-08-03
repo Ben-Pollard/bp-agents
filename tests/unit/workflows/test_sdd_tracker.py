@@ -52,21 +52,6 @@ async def test_list_ready_returns_issues() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_item_returns_none_on_404() -> None:
-    transport = httpx.MockTransport(_make_handler({}, status_code=404))
-    client = httpx.AsyncClient(transport=transport, base_url="http://plane:80")
-    tracker = PlaneTracker(
-        base_url="http://plane:80",
-        api_key="test-key",
-        workspace_slug="test-ws",
-        client=client,
-    )
-
-    result = await tracker.get_item("nonexistent", "project-1")
-    assert result is None
-
-
-@pytest.mark.asyncio
 async def test_update_state_calls_patch() -> None:
     transport = httpx.MockTransport(_make_handler({}))
     client = httpx.AsyncClient(transport=transport, base_url="http://plane:80")
@@ -78,17 +63,3 @@ async def test_update_state_calls_patch() -> None:
     )
 
     await tracker.update_state("issue-1", "implementing", "project-1")
-
-
-@pytest.mark.asyncio
-async def test_add_comment_calls_post() -> None:
-    transport = httpx.MockTransport(_make_handler({}, status_code=201))
-    client = httpx.AsyncClient(transport=transport, base_url="http://plane:80")
-    tracker = PlaneTracker(
-        base_url="http://plane:80",
-        api_key="test-key",
-        workspace_slug="test-ws",
-        client=client,
-    )
-
-    await tracker.add_comment("issue-1", "Starting implementation", "project-1")

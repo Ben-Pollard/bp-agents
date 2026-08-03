@@ -79,22 +79,8 @@ def build_ticket_pipeline(
     builder.add_node("handle_blocked", _node("blocked"))
 
     builder.add_conditional_edges(START, route_ticket)
-    builder.add_conditional_edges(
-        "review",
-        lambda s: "approve_review",
-        {
-            "approve_review": "approve_review",
-            "request_changes": "request_changes",
-        },
-    )
-    builder.add_conditional_edges(
-        "verify",
-        lambda s: "verification_pass",
-        {
-            "verification_pass": "verification_pass",
-            "verification_fail": "verification_fail",
-        },
-    )
+    builder.add_edge("review", "approve_review")
+    builder.add_edge("verify", "verification_pass")
     builder.add_conditional_edges("implement", route_ticket)
     builder.add_conditional_edges("approve_review", route_ticket)
     builder.add_conditional_edges("request_changes", route_ticket)

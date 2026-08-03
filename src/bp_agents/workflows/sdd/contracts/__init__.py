@@ -50,13 +50,6 @@ class Intervention(TypedDict):
     reason: str | None
 
 
-class TicketSpec(TypedDict):
-    ticket_id: str
-    name: str
-    description: str
-    acs: list[dict]
-
-
 class TddOutput(TypedDict):
     status: Literal["DONE", "DONE_WITH_CONCERNS", "BLOCKED"]
     summary: str

@@ -34,25 +34,9 @@ class PlaneTracker(Tracker):
         data = resp.json()
         return data.get("results", [])
 
-    async def get_item(self, item_id: str, project: str) -> dict | None:
-        resp = await self._client.get(
-            f"/api/v1/workspaces/{self.workspace_slug}/projects/{project}/issues/{item_id}"
-        )
-        if resp.status_code == 404:
-            return None
-        resp.raise_for_status()
-        return resp.json()
-
     async def update_state(self, item_id: str, state: str, project: str) -> None:
         resp = await self._client.patch(
             f"/api/v1/workspaces/{self.workspace_slug}/projects/{project}/issues/{item_id}",
             json={"state": state},
-        )
-        resp.raise_for_status()
-
-    async def add_comment(self, item_id: str, body: str, project: str) -> None:
-        resp = await self._client.post(
-            f"/api/v1/workspaces/{self.workspace_slug}/projects/{project}/issues/{item_id}/comments",
-            json={"body": body},
         )
         resp.raise_for_status()

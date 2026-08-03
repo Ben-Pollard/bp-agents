@@ -9,7 +9,7 @@ def test_tracker_is_abstract() -> None:
 
 
 def test_tracker_has_abstract_methods() -> None:
-    methods = ["list_ready", "get_item", "update_state", "add_comment"]
+    methods = ["list_ready", "update_state"]
     for m in methods:
         assert hasattr(Tracker, m)
         assert getattr(Tracker, m).__isabstractmethod__
