@@ -5,13 +5,18 @@ description = "A collection of personal agents"
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [{ name = "ben-pollard" }]
-dependencies = ["httpx>=0.28"]
+dependencies = [
+    "httpx>=0.28",
+    "langgraph>=1.2.10",
+    "langgraph-checkpoint-sqlite>=3.1.1",
+]
 
 [dependency-groups]
 dev = [
     "ruff>=0.8.0",
     "pytest>=8.0",
     "pre-commit>=4.0",
+    "pytest-asyncio>=1.4.0",
 ]
 
 [build-system]
