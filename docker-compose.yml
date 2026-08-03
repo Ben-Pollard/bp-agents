@@ -47,7 +47,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-plane-db:
+      plane-db:
         condition: service_healthy
       plane-redis:
         condition: service_started

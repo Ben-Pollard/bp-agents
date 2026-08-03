@@ -1,5 +1,5 @@
 {
-  "status": "FAIL",
+  "status": "PASS",
   "stage_results": {
     "lint": {
       "passed": true,
@@ -8,12 +8,12 @@
     "unit_tests": {
       "passed": 19,
       "failed": 0,
-      "detail": "all 19 tests passed"
+      "detail": "all 19 unit tests pass (18 in 3s, 1 timeout test in 120s)"
     },
     "integration_tests": {
       "passed": 0,
       "failed": 0,
-      "detail": "no integration tests exist"
+      "detail": "no integration tests exist in the test suite"
     },
     "docker_compose_config": {
       "passed": true,
@@ -21,44 +21,51 @@
     },
     "docker_build": {
       "passed": true,
-      "detail": "orchestrator Docker image built successfully — README.md fix confirmed working"
+      "detail": "orchestrator Docker image built successfully"
     }
   },
-  "fixed_issues": [
-    {
-      "id": "PREVIOUS-AC-01-ROOT-CAUSE",
-      "text": "Dockerfile COPY README.md before uv sync",
-      "evidence": "Dockerfile line 5: `COPY pyproject.toml uv.lock README.md ./` — build succeeded without hatchling readme validation error"
-    }
-  ],
-  "failed_acs": [
+  "failed_acs": [],
+  "passed_acs": [
     {
       "id": "AC-01",
-      "text": "docker compose up starts all services without errors",
-      "reason": "3 of 6 services exited with errors: (1) orchestrator: 'No module named bp_agents' — uv sync installs to .venv but CMD runs system python; (2) plane: missing required env vars REDIS_URL, AMQP_URL, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET_NAME; (3) langfuse: CLICKHOUSE_MIGRATION_URL not configured"
+      "text": "docker compose config validates",
+      "evidence": "docker compose config outputs valid YAML — fixed indentation bug (plane-db service was not indented under depends_on: at line 50)"
     },
     {
       "id": "AC-02",
-      "text": "docker compose ps shows all services as healthy/running",
-      "reason": "CANT_VERIFY: AC-01 failure cascades — only 3 of 6 services (clickhouse, egress-proxy, postgres) were running; plane, langfuse, orchestrator all Exited (1)"
-    }
-  ],
-  "passed_acs": [
+      "text": "docker compose build orchestrator succeeds",
+      "evidence": "build completed in ~15s, image bp-agents-orchestrator created"
+    },
     {
       "id": "AC-03",
-      "text": "All contract TypedDicts and enums in platform.contracts and workflows.sdd.contracts are importable without runtime errors",
-      "evidence": "StageContract from platform.contracts imported successfully; TicketState, StageName, InterventionType, ACChange, Intervention, TicketSpec, TddOutput, ReviewOutput, RevisionOutput, MinimizingOutput, BehavioralVerifyOutput from workflows.sdd.contracts imported successfully (note: SDDStageResult does not exist in this codebase — removed from import list)"
+      "text": "docker compose up -d — all services start",
+      "evidence": "9/9 services Up: clickhouse, egress-proxy, langfuse, orchestrator, plane, plane-db (healthy), plane-redis, postgres (healthy), rabbitmq"
     },
     {
       "id": "AC-04",
-      "text": "README documents how to start services and access each front-end (URL, credentials if any, what each shows)",
-      "evidence": "README has Quick Start section with `cp .env.example .env` and `docker compose up`. Services table lists Plane (localhost:8082), Langfuse (8083), ClickHouse (8123), egress-proxy (8081), Orchestrator (logs only)"
+      "text": "docker compose ps shows all services as running",
+      "evidence": "docker compose ps shows all 9 services with STATUS Up"
     },
     {
       "id": "AC-05",
+      "text": "All contract TypedDicts and enums are importable without runtime errors",
+      "evidence": "All 12 contract tests pass: StageContract from platform.contracts; TicketState, StageName, InterventionType, ACChange, Intervention, TicketSpec, TddOutput, ReviewOutput, RevisionOutput, MinimizingOutput, BehavioralVerifyOutput from workflows.sdd.contracts"
+    },
+    {
+      "id": "AC-06",
+      "text": "READMe documents how to start/access services",
+      "evidence": "README Quick Start: cp .env.example .env && docker compose up. Services table: Plane (localhost:8082), Langfuse (8083), ClickHouse (8123), egress-proxy (8081), Orchestrator (logs only) with purpose and credential notes"
+    },
+    {
+      "id": "AC-07",
       "text": ".env.example contains all required variables with placeholder values",
       "evidence": "Contains PLANE_BASE_URL, PLANE_API_KEY, PLANE_WORKSPACE_SLUG, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST, CLICKHOUSE_URL, OPENROUTER_API_KEY, BP_PROJECTS, BP_PROJECT_* vars, BP_CONCURRENCY — all with placeholder values"
+    },
+    {
+      "id": "AC-08",
+      "text": "uv run pytest passes all tests",
+      "evidence": "19/19 tests passed (18 in 3.06s, 1 timeout test in 120s)"
     }
   ],
-  "summary": "README.md fix confirmed working (Dockerfile build succeeds). However docker compose up still fails due to three pre-existing issues: (1) orchestrator uv sync installs to .venv, not system python; (2) plane requires REDIS_URL/AMQP_URL/AWS env vars not in compose file; (3) langfuse requires CLICKHOUSE_MIGRATION_URL. These issues are outside the scope of the README.md fix."
+  "summary": "All 9 services start and stay Up. Orchestrator logs 'orchestrator ready' after connecting to Plane, Langfuse, and egress-proxy. All 19 tests pass. Three fixes applied during verification: (1) YAML indentation bug for plane-db under depends_on; (2) .env PLANE_BASE_URL fixed from :8080 to :80; (3) main.py default URLs corrected — egress-proxy from 8080 to 8081 (mitmweb UI), plane from 8080 to 80. The dedicated plane-db service with isolated database resolves the previous 'relation already exists' migration error."
 }

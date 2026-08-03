@@ -6,14 +6,14 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-EGRESS_PROXY_URL = os.getenv("EGRESS_PROXY_URL", "http://egress-proxy:8080")
-PLANE_BASE_URL = os.getenv("PLANE_BASE_URL", "http://plane:8080")
+EGRESS_PROXY_URL = os.getenv("EGRESS_PROXY_URL", "http://egress-proxy:8081")
+PLANE_BASE_URL = os.getenv("PLANE_BASE_URL", "http://plane:80")
 LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://langfuse:3000")
 POLL_INTERVAL = int(os.getenv("BP_POLL_INTERVAL", "5"))
 BP_CONCURRENCY = int(os.getenv("BP_CONCURRENCY", "2"))
 
 
-def wait_for_dependency(url: str, name: str, timeout: int = 30) -> None:
+def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
     start = time.time()
     while time.time() - start < timeout:
         try:

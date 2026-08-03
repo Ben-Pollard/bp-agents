@@ -79,6 +79,6 @@ class TestMain:
             from bp_agents.orchestrator.main import main
 
             with pytest.raises(
-                RuntimeError, match="Plane did not become ready within 30s"
+                RuntimeError, match="Plane did not become ready within 120s"
             ):
                 main()
