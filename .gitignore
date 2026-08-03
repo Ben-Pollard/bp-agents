@@ -7,3 +7,4 @@ dist/
 *.egg-info/
 state.json
 .opencode/opencode-loop/
+.env

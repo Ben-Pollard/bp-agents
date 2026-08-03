@@ -33,9 +33,29 @@ services:
       - DOMAIN_NAME=localhost
       - SECRET_KEY=plane_secret_key_dev_only
       - PLANE_BASE_URL=http://localhost:8082
+      - REDIS_URL=redis://plane-redis:6379
+      - AMQP_URL=amqp://guest:guest@rabbitmq:5672/plane
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=miniosecret
+      - AWS_S3_BUCKET_NAME=plane
     depends_on:
       postgres:
         condition: service_healthy
+      plane-redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    networks:
+      - bp_agents
+
+  plane-redis:
+    image: redis:7
+    networks:
+      - bp_agents
+
+  rabbitmq:
+    image: rabbitmq:4-alpine
     networks:
       - bp_agents
 
@@ -55,6 +75,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://bp_agents:bp_agents_dev@postgres:5432/bp_agents
       - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_MIGRATION_URL=http://clickhouse:8123
       - NEXTAUTH_SECRET=langfuse_secret_dev_only
       - SALT=langfuse_salt_dev_only
       - NEXTAUTH_URL=http://localhost:8083
