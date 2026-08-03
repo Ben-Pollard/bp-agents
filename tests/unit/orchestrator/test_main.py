@@ -57,12 +57,16 @@ class TestMain:
             mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
             mock.patch("bp_agents.orchestrator.main.time.sleep") as mock_sleep,
             mock.patch("bp_agents.orchestrator.main.time.time") as mock_time,
+            mock.patch("bp_agents.orchestrator.main.PlaneTracker") as mock_tracker_cls,
         ):
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_get.return_value = mock_response
             mock_time.side_effect = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
             mock_sleep.side_effect = KeyboardInterrupt
+            mock_tracker = mock.AsyncMock()
+            mock_tracker.list_ready = mock.AsyncMock(return_value=[])
+            mock_tracker_cls.return_value = mock_tracker
 
             from bp_agents.orchestrator.main import main
 
@@ -73,8 +77,13 @@ class TestMain:
             assert "orchestrator shutting down" in records
 
     def test_main_raises_when_dependency_fails(self) -> None:
-        with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
+        with (
+            mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
+            mock.patch("bp_agents.orchestrator.main.time.time") as mock_time,
+            mock.patch("bp_agents.orchestrator.main.time.sleep"),
+        ):
             mock_get.side_effect = httpx.ConnectError("always refused")
+            mock_time.side_effect = [0, 120]
 
             from bp_agents.orchestrator.main import main
 

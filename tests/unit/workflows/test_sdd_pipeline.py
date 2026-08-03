@@ -17,6 +17,7 @@ def test_pipeline_with_sqlite_persistence() -> None:
 
             initial: TicketPipelineState = {
                 "ticket_id": "TICK-1",
+                "project": "project-1",
                 "status": "implementing",
                 "tdd_output": None,
                 "review_output": None,
@@ -48,6 +49,7 @@ def test_multiple_tickets_no_interference() -> None:
 
         ticket1: TicketPipelineState = {
             "ticket_id": "TICK-1",
+            "project": "project-1",
             "status": "implementing",
             "tdd_output": None,
             "review_output": None,
@@ -57,6 +59,7 @@ def test_multiple_tickets_no_interference() -> None:
 
         ticket2: TicketPipelineState = {
             "ticket_id": "TICK-2",
+            "project": "project-1",
             "status": "implementing",
             "tdd_output": None,
             "review_output": None,

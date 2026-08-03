@@ -16,6 +16,7 @@ from bp_agents.workflows.sdd.contracts import (
 
 class TicketPipelineState(TypedDict):
     ticket_id: str
+    project: str
     status: Literal[
         "implementing",
         "awaiting_review",

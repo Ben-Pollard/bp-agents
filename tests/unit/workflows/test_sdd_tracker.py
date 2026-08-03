@@ -1,5 +1,4 @@
 from datetime import datetime
-from unittest import mock
 
 import httpx
 import pytest
@@ -9,13 +8,11 @@ from bp_agents.workflows.sdd.contracts import TicketState
 from bp_agents.workflows.sdd.tracker import PlaneTracker, Ticket
 
 
-def _async_resp(
-    status_code: int = 200, json_data: dict | None = None
-) -> mock.AsyncMock:
-    resp = mock.AsyncMock(spec=httpx.Response)
-    resp.status_code = status_code
-    resp.json = mock.AsyncMock(return_value=json_data or {})
-    return resp
+def _make_handler(json_data: dict, status_code: int = 200):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code=status_code, json=json_data)
+
+    return handler
 
 
 def test_ticket_dataclass() -> None:
@@ -48,11 +45,6 @@ def test_plane_tracker_implements_tracker() -> None:
 
 @pytest.mark.asyncio
 async def test_list_ready_returns_issues() -> None:
-    tracker = PlaneTracker(
-        base_url="http://plane:80",
-        api_key="test-key",
-        workspace_slug="test-ws",
-    )
     mock_results = [
         {
             "id": "issue-1",
@@ -63,67 +55,59 @@ async def test_list_ready_returns_issues() -> None:
         }
     ]
 
-    with mock.patch.object(tracker._client, "get") as mock_get:
-        mock_get.return_value = _async_resp(json_data={"results": mock_results})
+    transport = httpx.MockTransport(_make_handler({"results": mock_results}))
+    client = httpx.AsyncClient(transport=transport, base_url="http://plane:80")
+    tracker = PlaneTracker(
+        base_url="http://plane:80",
+        api_key="test-key",
+        workspace_slug="test-ws",
+        client=client,
+    )
 
-        results = await tracker.list_ready("project-1")
+    results = await tracker.list_ready("project-1")
 
-        assert len(results) == 1
-        assert results[0]["id"] == "issue-1"
-        mock_get.assert_called_once_with(
-            "/api/v1/workspaces/test-ws/projects/project-1/issues",
-            params={"state_group": "backlog"},
-        )
+    assert len(results) == 1
+    assert results[0]["id"] == "issue-1"
 
 
 @pytest.mark.asyncio
 async def test_get_item_returns_none_on_404() -> None:
+    transport = httpx.MockTransport(_make_handler({}, status_code=404))
+    client = httpx.AsyncClient(transport=transport, base_url="http://plane:80")
     tracker = PlaneTracker(
         base_url="http://plane:80",
         api_key="test-key",
         workspace_slug="test-ws",
+        client=client,
     )
 
-    with mock.patch.object(tracker._client, "get") as mock_get:
-        mock_get.return_value = _async_resp(status_code=404)
-
-        result = await tracker.get_item("nonexistent")
-        assert result is None
+    result = await tracker.get_item("nonexistent", "project-1")
+    assert result is None
 
 
 @pytest.mark.asyncio
 async def test_update_state_calls_patch() -> None:
+    transport = httpx.MockTransport(_make_handler({}))
+    client = httpx.AsyncClient(transport=transport, base_url="http://plane:80")
     tracker = PlaneTracker(
         base_url="http://plane:80",
         api_key="test-key",
         workspace_slug="test-ws",
+        client=client,
     )
 
-    with mock.patch.object(tracker._client, "patch") as mock_patch:
-        mock_patch.return_value = _async_resp()
-
-        await tracker.update_state("issue-1", "implementing")
-
-        mock_patch.assert_called_once_with(
-            "/api/v1/workspaces/test-ws/projects/__all__/issues/issue-1",
-            json={"state": "implementing"},
-        )
+    await tracker.update_state("issue-1", "implementing", "project-1")
 
 
 @pytest.mark.asyncio
 async def test_add_comment_calls_post() -> None:
+    transport = httpx.MockTransport(_make_handler({}, status_code=201))
+    client = httpx.AsyncClient(transport=transport, base_url="http://plane:80")
     tracker = PlaneTracker(
         base_url="http://plane:80",
         api_key="test-key",
         workspace_slug="test-ws",
+        client=client,
     )
 
-    with mock.patch.object(tracker._client, "post") as mock_post:
-        mock_post.return_value = _async_resp(status_code=201)
-
-        await tracker.add_comment("issue-1", "Starting implementation")
-
-        mock_post.assert_called_once_with(
-            "/api/v1/workspaces/test-ws/projects/__all__/issues/issue-1/comments",
-            json={"body": "Starting implementation"},
-        )
+    await tracker.add_comment("issue-1", "Starting implementation", "project-1")

@@ -1,8 +1,11 @@
+import asyncio
 import logging
 import os
 import time
 
 import httpx
+
+from bp_agents.workflows.sdd.tracker import PlaneTracker
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +14,9 @@ PLANE_BASE_URL = os.getenv("PLANE_BASE_URL", "http://plane:80")
 LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://langfuse:3000")
 POLL_INTERVAL = int(os.getenv("BP_POLL_INTERVAL", "5"))
 BP_CONCURRENCY = int(os.getenv("BP_CONCURRENCY", "2"))
+PLANE_API_KEY = os.getenv("PLANE_API_KEY", "")
+PLANE_WORKSPACE_SLUG = os.getenv("PLANE_WORKSPACE_SLUG", "")
+PLANE_PROJECT = os.getenv("PLANE_PROJECT", "default")
 
 
 def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
@@ -36,10 +42,20 @@ def main() -> None:
     wait_for_dependency(LANGFUSE_HOST, "Langfuse")
     wait_for_dependency(f"{EGRESS_PROXY_URL}/", "egress-proxy")
 
+    tracker = PlaneTracker(
+        base_url=PLANE_BASE_URL,
+        api_key=PLANE_API_KEY,
+        workspace_slug=PLANE_WORKSPACE_SLUG,
+    )
+
     logger.info("orchestrator ready")
 
     try:
         while True:
+            ready = asyncio.run(tracker.list_ready(PLANE_PROJECT))
+            logger.info(
+                "ticket discovery: %d ready  project=%s", len(ready), PLANE_PROJECT
+            )
             time.sleep(POLL_INTERVAL)
     except KeyboardInterrupt:
         logger.info("orchestrator shutting down")

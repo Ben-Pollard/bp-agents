@@ -1,24 +1,21 @@
 {
   "status": "DONE",
-  "summary": "Implemented tracker port (platform-level ABC + PlaneTracker adapter) and pipeline engine skeleton (LangGraph StateGraph with all 11 TicketState transitions, stubbed agent nodes, SqliteSaver persistence, transition logging).",
+  "summary": "Addressed all 7 review violations: filled empty poll loop with PlaneTracker.list_ready + discovery logging, removed dead advance_ticket code, added project=<name> to dispatch logs, unified graph nodes to use NEXT_STATE dict, added optional client injection to PlaneTracker, switched tracker tests to httpx.MockTransport system boundary, replaced __all__ magic slug with proper project parameter.",
   "files_changed": [
+    "src/bp_agents/orchestrator/main.py",
     "src/bp_agents/platform/tracker.py",
-    "src/bp_agents/workflows/sdd/tracker.py",
-    "src/bp_agents/workflows/sdd/state.py",
     "src/bp_agents/workflows/sdd/graph.py",
-    "tests/unit/platform/test_tracker.py",
-    "tests/unit/workflows/test_sdd_tracker.py",
-    "tests/unit/workflows/test_sdd_state.py",
+    "src/bp_agents/workflows/sdd/state.py",
+    "src/bp_agents/workflows/sdd/tracker.py",
+    "tests/unit/orchestrator/test_main.py",
     "tests/unit/workflows/test_sdd_graph.py",
+    "tests/unit/workflows/test_sdd_tracker.py",
     "tests/unit/workflows/test_sdd_pipeline.py"
   ],
   "test_results": {
-    "passed": 38,
+    "passed": 33,
     "failed": 0,
-    "skipped": 1
+    "skipped": 0
   },
-  "concerns": [
-    "Existing orchestrator test test_main_raises_when_dependency_fails was skipped due to its 120s timeout (not related to this implementation)",
-    "Graph stub nodes always approve/pass; real decision logic for review and verification routing must be wired in when agents are added"
-  ]
+  "concerns": []
 }

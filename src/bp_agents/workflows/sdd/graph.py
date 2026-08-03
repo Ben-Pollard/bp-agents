@@ -24,11 +24,13 @@ NEXT_STATE: dict[str, str] = {
 
 def _log(state: TicketPipelineState, to: str) -> None:
     from_ = state["status"]
+    project = state.get("project", "unknown")
     logger.info(
-        "ticket %s: %s -> %s  [%s]",
+        "ticket %s: %s -> %s  project=%s  [%s]",
         state["ticket_id"],
         from_,
         to,
+        project,
         datetime.now(timezone.utc).isoformat(),
     )
 
@@ -39,11 +41,11 @@ def _advance(state: TicketPipelineState, to: str) -> dict:
 
 
 def implement(state: TicketPipelineState) -> dict:
-    return _advance(state, "awaiting_review")
+    return _advance(state, NEXT_STATE[state["status"]])
 
 
 def review(state: TicketPipelineState) -> dict:
-    return _advance(state, "reviewing")
+    return _advance(state, NEXT_STATE[state["status"]])
 
 
 def approve_review(state: TicketPipelineState) -> dict:
@@ -55,15 +57,15 @@ def request_changes(state: TicketPipelineState) -> dict:
 
 
 def revise(state: TicketPipelineState) -> dict:
-    return _advance(state, "revising")
+    return _advance(state, NEXT_STATE[state["status"]])
 
 
 def resubmit(state: TicketPipelineState) -> dict:
-    return _advance(state, "awaiting_review")
+    return _advance(state, NEXT_STATE[state["status"]])
 
 
 def verify(state: TicketPipelineState) -> dict:
-    return _advance(state, "verifying")
+    return _advance(state, NEXT_STATE[state["status"]])
 
 
 def verification_pass(state: TicketPipelineState) -> dict:
@@ -75,7 +77,7 @@ def verification_fail(state: TicketPipelineState) -> dict:
 
 
 def approve_final(state: TicketPipelineState) -> dict:
-    return _advance(state, "done")
+    return _advance(state, NEXT_STATE[state["status"]])
 
 
 def handle_blocked(state: TicketPipelineState) -> dict:
@@ -150,32 +152,3 @@ def build_ticket_pipeline(
     builder.add_conditional_edges("approve_final", route_ticket)
 
     return builder.compile(checkpointer=checkpointer)
-
-
-def advance_ticket(state: dict, ticket_id: str) -> dict:
-    ts = state["ticket_states"][ticket_id]
-    next_ = NEXT_STATE.get(ts["status"])
-    if not next_ or next_ == "__END__":
-        return state
-    if next_ == "__DECIDE_REVIEW__":
-        approved = bool(
-            ts.get("review_output") and ts["review_output"].get("action") == "approved"
-        )
-        next_ = "awaiting_verification" if approved else "awaiting_revision"
-    elif next_ == "__DECIDE_VERIFICATION__":
-        passed = bool(
-            ts.get("behavioral_verify_output")
-            and ts["behavioral_verify_output"].get("status") == "DONE"
-        )
-        next_ = "awaiting_approval" if passed else "awaiting_revision"
-    from_ = ts["status"]
-    ts["status"] = next_
-    logger.info(
-        "ticket %s: %s -> %s  [%s]",
-        ticket_id,
-        from_,
-        next_,
-        datetime.now(timezone.utc).isoformat(),
-    )
-    state["ticket_states"][ticket_id] = ts
-    return state
