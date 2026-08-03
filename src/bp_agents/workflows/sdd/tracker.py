@@ -1,22 +1,6 @@
-from dataclasses import dataclass
-from datetime import datetime
-
 import httpx
 
 from bp_agents.platform.tracker import Tracker
-from bp_agents.workflows.sdd.contracts import TicketState
-
-
-@dataclass
-class Ticket:
-    id: str
-    name: str
-    description: str | None
-    state: TicketState
-    project: str
-    labels: list[str]
-    created_at: datetime | None
-    updated_at: datetime | None
 
 
 class PlaneTracker(Tracker):

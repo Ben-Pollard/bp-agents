@@ -6,6 +6,3 @@ class StageContract(TypedDict):
     direction: Literal["input", "output"]
     timestamp: str
     payload: dict
-
-
-__all__ = ["StageContract"]

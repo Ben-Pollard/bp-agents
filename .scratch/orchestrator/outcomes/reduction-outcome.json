@@ -1,50 +1,134 @@
 {
-  "modules_audited": 8,
-  "total_lines": 582,
-  "lines_eliminable": 16,
+  "modules_audited": 14,
+  "total_lines": 903,
+  "lines_eliminable": 255,
   "reduction_table": [
+    {
+      "module": "src/bp_agents/workflows/sdd/graph.py",
+      "lines": 154,
+      "what_changes": "Replace 11 stub node functions (implement, review, approve_review, request_changes, revise, resubmit, verify, verification_pass, verification_fail, approve_final, handle_blocked) with a 5-line factory _node(target) pattern. Each function is an identical pass-through to _advance. Also inline decide_review and decide_verification stubs as lambdas in add_conditional_edges.",
+      "reduction": 41,
+      "dep_cost": "none"
+    },
+    {
+      "module": "src/bp_agents/workflows/sdd/tracker.py",
+      "lines": 74,
+      "what_changes": "Remove Ticket dataclass (lines 10-19) — never constructed in production. list_ready returns list[dict], not list[Ticket]. No caller creates Ticket instances.",
+      "reduction": 10,
+      "dep_cost": "none"
+    },
+    {
+      "module": "src/bp_agents/orchestrator/main.py",
+      "lines": 65,
+      "what_changes": "Remove BP_CONCURRENCY = int(os.getenv(...)) line — defined from env but never referenced in any logic path.",
+      "reduction": 1,
+      "dep_cost": "none"
+    },
     {
       "module": "src/bp_agents/platform/contracts/__init__.py",
       "lines": 11,
-      "what_changes": "Remove __all__ (no caller uses from module import *)",
+      "what_changes": "Remove __all__ block — no caller uses `from platform.contracts import *`.",
       "reduction": 2,
       "dep_cost": "none"
     },
     {
       "module": "src/bp_agents/workflows/sdd/contracts/__init__.py",
       "lines": 115,
-      "what_changes": "Remove __all__ (no caller uses from module import *; grep shows explicit named imports only)",
+      "what_changes": "Remove __all__ block — no caller uses `from workflows.sdd.contracts import *`.",
       "reduction": 13,
       "dep_cost": "none"
     },
     {
-      "module": "src/bp_agents/orchestrator/main.py",
-      "lines": 49,
-      "what_changes": "Remove BP_CONCURRENCY constant — defined from env var but never referenced in any logic path",
-      "reduction": 1,
+      "module": "tests/unit/contracts/test_platform_contracts.py",
+      "lines": 14,
+      "what_changes": "Delete file. Tests TypedDict construction — verifies Python language guarantees, no behavioral logic. Type errors would be caught by ruff in CI.",
+      "reduction": 14,
+      "dep_cost": "none"
+    },
+    {
+      "module": "tests/unit/contracts/test_sdd_contracts.py",
+      "lines": 141,
+      "what_changes": "Delete file or collapse to single 3-line importability check. 11 tests all assert StrEnum values and TypedDict shapes that the type definitions already declare. Each test tautologically reaffirms what was written on the previous line.",
+      "reduction": 138,
+      "dep_cost": "none"
+    },
+    {
+      "module": "tests/unit/workflows/test_sdd_state.py",
+      "lines": 38,
+      "what_changes": "Delete file. Tests TypedDict construction — same pattern as contract tests. No behavioral logic exercised.",
+      "reduction": 38,
+      "dep_cost": "none"
+    },
+    {
+      "module": "tests/unit/workflows/test_sdd_tracker.py",
+      "lines": 113,
+      "what_changes": "Remove test_ticket_dataclass function — tests the dead Ticket dataclass. Other tests in file (PlaneTracker HTTP behavior) are valid.",
+      "reduction": 13,
       "dep_cost": "none"
     }
   ],
   "violations": [
     {
-      "file_line": "src/bp_agents/workflows/sdd/contracts/__init__.py:103",
-      "lines": 13,
-      "replacement": "Delete __all__ block",
+      "file_line": "src/bp_agents/workflows/sdd/graph.py:43-84",
+      "lines": 42,
+      "replacement": "Replace with 5-line _node(target) factory. Each stub does `_advance(state, target)` with no per-function logic. `builder.add_node(\"implement\", implement)` becomes `builder.add_node(\"implement\", _node(\"awaiting_review\"))`. Similarly inline decide_review/decide_verification as lambdas in add_conditional_edges.",
       "question": 3
     },
     {
-      "file_line": "src/bp_agents/platform/contracts/__init__.py:10",
-      "lines": 2,
-      "replacement": "Delete __all__ block",
+      "file_line": "src/bp_agents/workflows/sdd/tracker.py:10-19",
+      "lines": 10,
+      "replacement": "Delete the Ticket dataclass. It is a dead type — list_ready returns list[dict], and no production code constructs Ticket instances.",
       "question": 3
     },
     {
-      "file_line": "src/bp_agents/orchestrator/main.py:13",
+      "file_line": "src/bp_agents/orchestrator/main.py:16",
       "lines": 1,
-      "replacement": "Delete BP_CONCURRENCY = int(os.getenv(...)) line",
+      "replacement": "Delete `BP_CONCURRENCY = int(os.getenv(\"BP_CONCURRENCY\", \"2\"))`. Zero references in any logic path. Will be re-introduced when multi-project concurrency is implemented (issue 09).",
+      "question": 3
+    },
+    {
+      "file_line": "src/bp_agents/platform/contracts/__init__.py:10-11",
+      "lines": 2,
+      "replacement": "Delete __all__ block. No consumer does `from platform.contracts import *`. grep confirms all imports are explicit named imports.",
+      "question": 3
+    },
+    {
+      "file_line": "src/bp_agents/workflows/sdd/contracts/__init__.py:103-115",
+      "lines": 13,
+      "replacement": "Delete __all__ block. No consumer does `from workflows.sdd.contracts import *`. All imports are explicit.",
+      "question": 3
+    },
+    {
+      "file_line": "tests/unit/contracts/test_platform_contracts.py:1-14",
+      "lines": 14,
+      "replacement": "Delete entire file. Tests that TypedDict fields can be accessed — a Python language guarantee. No behavioral contract enforced.",
+      "question": 3
+    },
+    {
+      "file_line": "tests/unit/contracts/test_sdd_contracts.py:1-141",
+      "lines": 141,
+      "replacement": "Delete entire file (or collapse to 3-line `import bp_agents.workflows.sdd.contracts` to verify importability). The 11 tests re-state enum values and TypedDict fields that the definitions already declare. TicketState.AWAITING_REVIEW.value == \"awaiting_review\" is guaranteed by StrEnum. TypedDict field access is a runtime tautology.",
+      "question": 3
+    },
+    {
+      "file_line": "tests/unit/workflows/test_sdd_state.py:1-38",
+      "lines": 38,
+      "replacement": "Delete entire file. Both tests construct TypedDicts with literal values and assert field access — same zero-value pattern as contract tests.",
+      "question": 3
+    },
+    {
+      "file_line": "tests/unit/workflows/test_sdd_tracker.py:20-32",
+      "lines": 13,
+      "replacement": "Delete test_ticket_dataclass. Tests the dead Ticket dataclass; no production code constructs one.",
+      "question": 3
+    },
+    {
+      "file_line": "src/bp_agents/workflows/sdd/graph.py:101-108",
+      "lines": 8,
+      "replacement": "Inline decide_review and decide_verification stubs as `lambda _: \"approve_review\"` (4 lines saved) in add_conditional_edges calls. Stub comment can remain as inline comment. Lower priority than the node factory refactor.",
       "question": 3
     }
   ],
-  "review_notes": "Audited 8 modules (582 total lines). 16 lines eliminable (2.7%). All violations are Question 3 (unnecessary code). The __all__ blocks in both contract modules are ornamental — nothing uses `from module import *`. BP_CONCURRENCY is read from the env but never consumed by any logic. The wait_for_dependency retry loop (11 lines) could be replaced by tenacity but is below the 20-line minimum threshold for library introduction. Test contracts (test_sdd_contracts.py, 141 lines) are repetitive boilerplate testing Python language guarantees (StrEnum, TypedDict shape) but serve as regression documentation for the SDD pipeline; pragmatically retain. No stdlib/library replacement violations (Questions 1-2) found — httpx is appropriate, enum/TypedDict are the correct stdlib tools.",
-  "action": "approved"
+  "review_notes": "Audited 14 modules (903 total lines across production and test). 255 lines eliminable (28.2%). All violations are Question 3 (unnecessary code). No stdlib/library replacement opportunities found (Questions 1-2). httpx is appropriate for HTTP; enum.TypedDict are the correct stdlib tools; no library would meaningfully reduce the contract/state definitions. The major finding: 11 identical stub node functions in graph.py (42 lines) that can be replaced by a 5-line factory. The contract/state test files (test_platform_contracts.py, test_sdd_contracts.py, test_sdd_state.py; 193 lines combined) tautologically test Python language guarantees — each test asserts that a TypedDict field accessor works or that a StrEnum value matches its declaration string. These provide zero behavioral coverage and would be caught by ruff's type-check mode. The Ticket dataclass in tracker.py (10 lines) is dead code: list_ready returns raw dicts, no production caller instantiates Ticket. BP_CONCURRENCY in main.py is dead config. Both __all__ blocks are ornamental. Secondary finding: decide_review and decide_verification (8 lines) can be inlined as lambdas. NOTE: TicketState.READY ('ready') is defined in the enum but excluded from TicketPipelineState.status Literal — type misalignment, not a reduction issue, but should be resolved.",
+  "action": "changes-requested"
 }

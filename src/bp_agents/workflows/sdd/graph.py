@@ -40,48 +40,11 @@ def _advance(state: TicketPipelineState, to: str) -> dict:
     return {"status": to}
 
 
-def implement(state: TicketPipelineState) -> dict:
-    return _advance(state, NEXT_STATE[state["status"]])
+def _node(target: str):
+    def node_fn(state: TicketPipelineState) -> dict:
+        return _advance(state, target)
 
-
-def review(state: TicketPipelineState) -> dict:
-    return _advance(state, NEXT_STATE[state["status"]])
-
-
-def approve_review(state: TicketPipelineState) -> dict:
-    return _advance(state, "awaiting_verification")
-
-
-def request_changes(state: TicketPipelineState) -> dict:
-    return _advance(state, "awaiting_revision")
-
-
-def revise(state: TicketPipelineState) -> dict:
-    return _advance(state, NEXT_STATE[state["status"]])
-
-
-def resubmit(state: TicketPipelineState) -> dict:
-    return _advance(state, NEXT_STATE[state["status"]])
-
-
-def verify(state: TicketPipelineState) -> dict:
-    return _advance(state, NEXT_STATE[state["status"]])
-
-
-def verification_pass(state: TicketPipelineState) -> dict:
-    return _advance(state, "awaiting_approval")
-
-
-def verification_fail(state: TicketPipelineState) -> dict:
-    return _advance(state, "awaiting_revision")
-
-
-def approve_final(state: TicketPipelineState) -> dict:
-    return _advance(state, NEXT_STATE[state["status"]])
-
-
-def handle_blocked(state: TicketPipelineState) -> dict:
-    return _advance(state, "blocked")
+    return node_fn
 
 
 ROUTE_MAP: dict[str, str] = {
@@ -98,37 +61,27 @@ def route_ticket(state: TicketPipelineState) -> str:
     return ROUTE_MAP.get(state["status"], END)
 
 
-def decide_review(state: TicketPipelineState) -> str:
-    # Stub: always approve. Real implementation checks review_output.
-    return "approve_review"
-
-
-def decide_verification(state: TicketPipelineState) -> str:
-    # Stub: always pass. Real implementation checks behavioral_verify_output.
-    return "verification_pass"
-
-
 def build_ticket_pipeline(
     checkpointer: SqliteSaver | None = None,
 ):
     builder = StateGraph(TicketPipelineState)
 
-    builder.add_node("implement", implement)
-    builder.add_node("review", review)
-    builder.add_node("approve_review", approve_review)
-    builder.add_node("request_changes", request_changes)
-    builder.add_node("revise", revise)
-    builder.add_node("resubmit", resubmit)
-    builder.add_node("verify", verify)
-    builder.add_node("verification_pass", verification_pass)
-    builder.add_node("verification_fail", verification_fail)
-    builder.add_node("approve_final", approve_final)
-    builder.add_node("handle_blocked", handle_blocked)
+    builder.add_node("implement", _node(NEXT_STATE["implementing"]))
+    builder.add_node("review", _node(NEXT_STATE["awaiting_review"]))
+    builder.add_node("approve_review", _node("awaiting_verification"))
+    builder.add_node("request_changes", _node("awaiting_revision"))
+    builder.add_node("revise", _node(NEXT_STATE["awaiting_revision"]))
+    builder.add_node("resubmit", _node(NEXT_STATE["revising"]))
+    builder.add_node("verify", _node(NEXT_STATE["awaiting_verification"]))
+    builder.add_node("verification_pass", _node("awaiting_approval"))
+    builder.add_node("verification_fail", _node("awaiting_revision"))
+    builder.add_node("approve_final", _node(NEXT_STATE["awaiting_approval"]))
+    builder.add_node("handle_blocked", _node("blocked"))
 
     builder.add_conditional_edges(START, route_ticket)
     builder.add_conditional_edges(
         "review",
-        decide_review,
+        lambda s: "approve_review",
         {
             "approve_review": "approve_review",
             "request_changes": "request_changes",
@@ -136,7 +89,7 @@ def build_ticket_pipeline(
     )
     builder.add_conditional_edges(
         "verify",
-        decide_verification,
+        lambda s: "verification_pass",
         {
             "verification_pass": "verification_pass",
             "verification_fail": "verification_fail",

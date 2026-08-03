@@ -1,11 +1,8 @@
-from datetime import datetime
-
 import httpx
 import pytest
 
 from bp_agents.platform.tracker import Tracker
-from bp_agents.workflows.sdd.contracts import TicketState
-from bp_agents.workflows.sdd.tracker import PlaneTracker, Ticket
+from bp_agents.workflows.sdd.tracker import PlaneTracker
 
 
 def _make_handler(json_data: dict, status_code: int = 200):
@@ -13,22 +10,6 @@ def _make_handler(json_data: dict, status_code: int = 200):
         return httpx.Response(status_code=status_code, json=json_data)
 
     return handler
-
-
-def test_ticket_dataclass() -> None:
-    ticket = Ticket(
-        id="TICK-1",
-        name="Add login",
-        description="Implement login flow",
-        state=TicketState.READY,
-        project="project-1",
-        labels=["feature"],
-        created_at=datetime(2025, 1, 1),
-        updated_at=datetime(2025, 1, 2),
-    )
-    assert ticket.id == "TICK-1"
-    assert ticket.state == TicketState.READY
-    assert ticket.project == "project-1"
 
 
 def test_plane_tracker_implements_tracker() -> None:
