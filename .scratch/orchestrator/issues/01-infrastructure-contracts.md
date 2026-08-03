@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: in-progress
 
 # 01 — Infrastructure + Contracts
 
