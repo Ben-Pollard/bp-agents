@@ -1,4 +1,4 @@
-Status: in-progress
+Status: done
 
 # 01 — Infrastructure + Contracts
 
@@ -259,3 +259,12 @@ Repository structure: Single repo for platform + workflows + infra; target proje
 ## Blocked by
 
 None — can start immediately.
+
+## Outcome
+
+Scaffolded project with Docker Compose (9 services: orchestrator, Plane, langfuse, ClickHouse, egress-proxy, postgres, plane-db, plane-redis, rabbitmq), shared contract TypedDicts/enums/ABCs in `bp_agents.platform.contracts` and `bp_agents.workflows.sdd.contracts`, orchestrator binary that logs "ready" and connects to dependencies, `.env.example`, `README.md`, `Dockerfile`. All 19 tests pass, all ACs satisfied.
+
+- Implement: `.scratch/orchestrator/outcomes/implement-outcome.json`
+- Review: `.scratch/orchestrator/outcomes/review-outcome.json`
+- Reduction: `.scratch/orchestrator/outcomes/reduction-outcome.json`
+- Verify: `.scratch/orchestrator/outcomes/verify-outcome.json`
