@@ -1,95 +1,59 @@
 {
-  "modules_audited": 9,
-  "total_lines": 411,
-  "lines_eliminable": 66,
+  "modules_audited": 7,
+  "total_lines": 335,
+  "lines_eliminable": 0,
   "reduction_table": [
     {
       "module": "src/bp_agents/orchestrator/main.py",
-      "lines": 64,
-      "what_changes": "Remove wait_for_dependency(LANGFUSE_HOST, ...) and LANGFUSE_HOST const (lines 14, 41). Langfuse health-checked but never used by any logic path in the current implementation. Save 2 lines.",
-      "reduction": 2,
+      "lines": 62,
+      "what_changes": "Verify finding #1: LANGFUSE_HOST const removed. Generic wait_for_dependency remains (needed for Plane/egress-proxy health check). RESOLVED.",
+      "reduction": 0,
       "dep_cost": "none"
     },
     {
       "module": "src/bp_agents/platform/tracker.py",
-      "lines": 15,
-      "what_changes": "Remove unused abstract methods get_item (line 9) and add_comment (line 15). Neither method called from any production code. Reduces ABC to just list_ready and update_state (the only methods the AC require). Save 6 lines.",
-      "reduction": 6,
+      "lines": 9,
+      "what_changes": "Verify finding #2: get_item/add_comment ABC methods removed. Only list_ready and update_state remain. RESOLVED.",
+      "reduction": 0,
       "dep_cost": "none"
     },
     {
       "module": "src/bp_agents/workflows/sdd/graph.py",
-      "lines": 107,
-      "what_changes": "Remove dead branches in review and verify conditional edges (lines 82-97). Both lambdas hard-code a single return value (\"approve_review\" / \"verification_pass\"), so the alternate routing branch is unreachable replaceable with unconditional edges. Save 16 lines.",
-      "reduction": 16,
+      "lines": 93,
+      "what_changes": "Verify finding #3: review→approve_review and verify→verification_pass now use add_edge, not conditional edges with hard-coded lambdas. RESOLVED.",
+      "reduction": 0,
       "dep_cost": "none"
     },
     {
       "module": "src/bp_agents/workflows/sdd/state.py",
-      "lines": 53,
-      "what_changes": "Remove SDDFeatureState TypedDict (lines 38-53, 16 lines) and 7 unused imports (StageContract, ACChange, BehavioralVerifyOutput, Intervention, MinimizingOutput, StageName, TicketSpec) that exist only to serve SDDFeatureState (lines 3-14, 7 lines). SDDFeatureState is never instantiated or referenced by any caller. Save 23 lines.",
-      "reduction": 23,
+      "lines": 28,
+      "what_changes": "Verify findings #4 and #5: SDDFeatureState TypedDict removed. Unused imports (StageContract, ACChange, BehavioralVerifyOutput, Intervention, MinimizingOutput, StageName, TicketSpec) removed. RESOLVED.",
+      "reduction": 0,
       "dep_cost": "none"
     },
     {
       "module": "src/bp_agents/workflows/sdd/contracts/__init__.py",
-      "lines": 100,
-      "what_changes": "Remove TicketSpec TypedDict (lines 53-57). Only consumer was dead SDDFeatureState. Save 5 lines.",
-      "reduction": 5,
+      "lines": 93,
+      "what_changes": "Verify finding #6: TicketSpec TypedDict removed. Forward-looking types (TicketState, StageName, InterventionType, etc.) remain as planned API surface for downstream issues. RESOLVED.",
+      "reduction": 0,
       "dep_cost": "none"
     },
     {
       "module": "src/bp_agents/workflows/sdd/tracker.py",
-      "lines": 58,
-      "what_changes": "Remove unused concrete methods get_item (lines 37-44, 8 lines) and add_comment (lines 53-58, 6 lines). No production caller invokes either method. Save 14 lines.",
-      "reduction": 14,
+      "lines": 42,
+      "what_changes": "Verify finding #7: get_item/add_comment concrete methods removed. Only __init__, list_ready, and update_state remain. RESOLVED.",
+      "reduction": 0,
+      "dep_cost": "none"
+    },
+    {
+      "module": "src/bp_agents/platform/contracts/__init__.py",
+      "lines": 8,
+      "what_changes": "StageContract TypedDict is technically unused by production code (6 eliminable lines). Forward-looking platform contract definition; below 20-line threshold. Not flagged.",
+      "reduction": 0,
       "dep_cost": "none"
     }
   ],
-  "violations": [
-    {
-      "file_line": "src/bp_agents/orchestrator/main.py:14,41",
-      "lines": 2,
-      "replacement": "Remove LANGFUSE_HOST const and its wait_for_dependency call. Langfuse is not used post-startup.",
-      "question": 3
-    },
-    {
-      "file_line": "src/bp_agents/platform/tracker.py:9,15",
-      "lines": 6,
-      "replacement": "Remove get_item and add_comment abstract methods. Not called by any production code. AC only requires list_ready and update_state.",
-      "question": 3
-    },
-    {
-      "file_line": "src/bp_agents/workflows/sdd/graph.py:82-97",
-      "lines": 16,
-      "replacement": "Replace conditional edges with hard-coded lambdas with unconditional edges. Both lambdas return a constant, making the alternate branch unreachable.",
-      "question": 3
-    },
-    {
-      "file_line": "src/bp_agents/workflows/sdd/state.py:38-53",
-      "lines": 16,
-      "replacement": "Remove SDDFeatureState TypedDict. Zero callers — dead code.",
-      "question": 3
-    },
-    {
-      "file_line": "src/bp_agents/workflows/sdd/state.py:3,5-15",
-      "lines": 7,
-      "replacement": "Remove unused imports (StageContract, ACChange, BehavioralVerifyOutput, Intervention, MinimizingOutput, StageName, TicketSpec) — all sole consumers of SDDFeatureState which is itself dead.",
-      "question": 3
-    },
-    {
-      "file_line": "src/bp_agents/workflows/sdd/contracts/__init__.py:53-57",
-      "lines": 5,
-      "replacement": "Remove TicketSpec TypedDict. Only consumer was dead SDDFeatureState.",
-      "question": 3
-    },
-    {
-      "file_line": "src/bp_agents/workflows/sdd/tracker.py:37-44,53-58",
-      "lines": 14,
-      "replacement": "Remove get_item and add_comment concrete implementations. No caller invokes these methods.",
-      "question": 3
-    }
-  ],
-  "review_notes": "All 8 previous reduction findings verified as resolved (commit 2161cef). Current codebase: 411 lines across 9 non-empty modules. Found 66 eliminable lines (16%) from 7 violations — all Question 3 (unnecessary code). Primary finding: SDDFeatureState dead code cluster (state.py:38-53 + cascading imports and TicketSpec) accounts for 28 of 66 lines. Secondary: tracker.py unused port methods (ABC + impl, 20 lines combined) and graph.py dead decision branches (16 lines). Minor: Langfuse health-check that's not wired to any logic (2 lines). No library-replacement opportunities found (Q1/Q2). All findings are speculative API surface or forward-looking skeleton that could be deferred. Total 66 lines > 20-line threshold → changes requested.",
-  "action": "changes-requested"
+  "violations": [],
+  "review_notes": "Reduction audit round 3. All 7 previous violations (66 eliminable lines) confirmed resolved. Total lines dropped from 411 to 335 (76 lines removed, exceeding the 66 identified). Current codebase: 335 lines across 7 non-empty source modules + 290 test lines. No new violations meeting the 20-line threshold. StageContract (platform/contracts, 6 lines) is technically unused but is a forward-looking platform contract definition — below threshold and architecturally intentional.",
+  "action": "approved"
 }
