@@ -1,0 +1,36 @@
+{
+  "status": "FAIL",
+  "stage_results": {
+    "lint": {"passed": true, "details": "ruff check: All checks passed"},
+    "unit_tests": {"passed": 19, "failed": 0, "skipped": 0, "details": "All 19 tests passed (contracts, orchestrator, placeholder)"}
+  },
+  "failed_acs": [
+    {
+      "id": "AC-01",
+      "text": "docker compose up starts all services (orchestrator, Plane, Langfuse, egress proxy) without errors",
+      "reason": "FAIL: 'makeplane/plane:latest' Docker image does not exist on Docker Hub (pull access denied). Langfuse exits immediately with 'CLICKHOUSE_URL is not configured' — Langfuse V3 requires a ClickHouse service not declared in docker-compose.yml. postgres and egress-proxy start correctly."
+    },
+    {
+      "id": "AC-02",
+      "text": "docker compose ps shows all services as healthy/running",
+      "reason": "FAIL: Cannot verify — see AC-01. Plane cannot be pulled; langfuse crashes on startup. Of 5 services, only 2 (postgres, egress-proxy) are running; langfuse is absent from ps output."
+    }
+  ],
+  "passed_acs": [
+    {
+      "id": "AC-03",
+      "text": "All contract TypedDicts and enums in platform.contracts and workflows.sdd.contracts are importable without runtime errors",
+      "reason": "PASS: Verified via `uv run python3 -c \"from bp_agents.platform.contracts import StageContract\"` and `uv run python3 -c \"from bp_agents.workflows.sdd.contracts import TicketState, StageName, InterventionType, ACChange, Intervention, TicketSpec, TddOutput, ReviewOutput, RevisionOutput, MinimizingOutput, BehavioralVerifyOutput\"`. Both import cleanly. Also confirmed by 19/19 passing tests."
+    },
+    {
+      "id": "AC-04",
+      "text": "README documents how to start services and access each front-end (URL, credentials if any, what each shows)",
+      "reason": "PASS: README.md lines 10-40 document: (1) startup: 'cp .env.example .env && docker compose up', (2) URL table with Plane (:8082), Langfuse (:8083), egress-proxy (:8081), Orchestrator (logs only), (3) credentials noted as 'Configure via .env' or 'None'."
+    },
+    {
+      "id": "AC-05",
+      "text": ".env.example contains all required variables with placeholder values",
+      "reason": "PASS: .env.example contains 11 variables across 5 sections: Plane (PLANE_BASE_URL, PLANE_API_KEY, PLANE_WORKSPACE_SLUG), Langfuse (LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST), Model API (OPENROUTER_API_KEY), Projects (BP_PROJECTS, BP_PROJECT_EXAMPLE_PROJECT_REPO, BP_PROJECT_EXAMPLE_PROJECT_PLANE_PROJECT_ID), Concurrency (BP_CONCURRENCY). All have placeholder values."
+    }
+  ]
+}

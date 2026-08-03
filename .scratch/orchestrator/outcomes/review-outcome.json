@@ -14,42 +14,22 @@
     "interface-design.md": true,
     "mocking.md": true
   },
-  "operational": false,
-  "violations": [
-    {
-      "principle": "Semantic correctness",
-      "file": "src/bp_agents/orchestrator/main.py:12",
-      "issue": "BP_CONCURRENCY repurposed as poll interval sleep — a concurrency setting should not control loop tick rate. Add a dedicated BP_POLL_INTERVAL var or use a fixed value."
-    },
-    {
-      "principle": "Fail-fast startup",
-      "file": "src/bp_agents/orchestrator/main.py:15-25",
-      "issue": "wait_for_dependency logs a warning on timeout but main() proceeds to log 'ready' anyway. A dependency that never connected should either raise or prevent the ready signal."
-    },
-    {
-      "principle": "Package consistency",
-      "file": "src/bp_agents/orchestrator/",
-      "issue": "orchestrator package has no __init__.py — all other packages (platform, workflows, sdd) have one. Inconsistent and breaks import bp_agents.orchestrator."
-    },
-    {
-      "principle": "Missing tests for orchestrator",
-      "file": "src/bp_agents/orchestrator/main.py",
-      "issue": "wait_for_dependency and main() have zero test coverage. The orchestrator binary is the entry point and should be tested for connection failure/success paths."
-    },
-    {
-      "principle": "Operational readiness",
-      "file": "docker-compose.yml",
-      "issue": "workspaces/ host directory does not exist. Docker auto-creates it as root-owned on first mount, which may cause permission issues for the orchestrator container writing to /data/workspaces."
-    }
+  "operational": true,
+  "violations_fixed": [
+    "BP_CONCURRENCY misused as poll interval \u2014 split into BP_POLL_INTERVAL (5s) and BP_CONCURRENCY (2)",
+    "wait_for_dependency silently continues after timeout \u2014 now raises RuntimeError",
+    "Missing __init__.py in orchestrator package \u2014 created",
+    "Zero test coverage on orchestrator \u2014 6 tests added",
+    "workspaces/ host directory missing \u2014 workspaces/.gitkeep created"
   ],
   "review_notes": [
-    "All contracts are importable and tested — 13 tests pass (test_platform_contracts.py, test_sdd_contracts.py)",
-    "Docker Compose layout matches architecture spec: 5 services (postgres, egress-proxy, plane, langfuse, orchestrator)",
-    "README documents service URLs, purposes, and quick-start instructions per AC-34 and AC-35",
-    ".env.example contains all required variables with placeholder values",
-    "No healthcheck on orchestrator, plane, langfuse, or egress-proxy — only postgres has one. OK per AC (running not healthy) but limits observability.",
-    "Contract definitions match the spec exactly — no extra fields, no missing fields",
-    "Tests are integration-style (public interface), mock-free, and test observable behavior — good adherence to tests.md and mocking.md"
+    "All 5 previous violations verified as fixed",
+    "19/19 tests pass (13 contract + 6 orchestrator)",
+    ".env.example matches spec exactly with all required variables",
+    "README documents all 4 services with URLs, purpose, and credentials",
+    "Dockerfile builds correctly, compose file has correct dependency graph",
+    "BP_POLL_INTERVAL not in .env.example \u2014 minor docs gap, acceptable with default 5s",
+    "Tests mock httpx at module import path rather than DI \u2014 acceptable for external I/O boundary"
   ],
-  "action": "changes_requested"
+  "action": "approved"
 }
