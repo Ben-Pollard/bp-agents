@@ -5,6 +5,7 @@ description = "A collection of personal agents"
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [{ name = "ben-pollard" }]
+dependencies = ["httpx>=0.28"]
 
 [dependency-groups]
 dev = [

@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bp_agents
+      POSTGRES_PASSWORD: bp_agents_dev
+      POSTGRES_DB: bp_agents
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bp_agents"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bp_agents
+
+  egress-proxy:
+    image: mitmproxy/mitmproxy:latest
+    command: mitmweb --listen-host 0.0.0.0 --listen-port 8080 --web-host 0.0.0.0 --web-port 8081
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    networks:
+      - bp_agents
+
+  plane:
+    image: makeplane/plane:latest
+    ports:
+      - "8082:8080"
+    environment:
+      - DATABASE_URL=postgresql://bp_agents:bp_agents_dev@postgres:5432/bp_agents
+      - SECRET_KEY=plane_secret_key_dev_only
+      - PLANE_BASE_URL=http://localhost:8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bp_agents
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    ports:
+      - "8083:3000"
+    environment:
+      - DATABASE_URL=postgresql://bp_agents:bp_agents_dev@postgres:5432/bp_agents
+      - NEXTAUTH_SECRET=langfuse_secret_dev_only
+      - SALT=langfuse_salt_dev_only
+      - NEXTAUTH_URL=http://localhost:8083
+      - TELEMETRY_ENABLED=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bp_agents
+
+  orchestrator:
+    build: .
+    env_file: .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./workspaces:/data/workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      plane:
+        condition: service_started
+      langfuse:
+        condition: service_started
+      egress-proxy:
+        condition: service_started
+    networks:
+      - bp_agents
+
+volumes:
+  postgres_data:
+
+networks:
+  bp_agents:
