@@ -1,6 +1,6 @@
 {
   "status": "DONE",
-  "summary": "Fixed two docker-py API bugs: (1) removed host_config= kwarg from containers.create(), inlined host config fields (mem_limit, nano_cpus, network, binds, port_binding) as flat create kwargs; (2) fixed list_containers() label filter format from dict to list of 'key=value' strings. Removed _build_host_config method. Updated 4 unit tests to match new flat-kwarg assertion patterns. All 60 tests pass.",
+  "summary": "Fixed invalid `binds`/`port_binding` kwargs in DockerSandbox._create_and_start_container: replaced `binds=[...]` with `volumes={path: {bind, mode}}` dict and `port_binding={8080: None}` with `ports={8080: None}`. Valid flat kwargs (mem_limit, nano_cpus, network, runtime) retained. Updated unit tests to assert volumes and ports.",
   "test_results": {
     "passed": 60,
     "failed": 0,

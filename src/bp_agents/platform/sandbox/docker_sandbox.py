@@ -72,15 +72,14 @@ class DockerSandbox(Sandbox):
             environment=env,
             labels=labels,
             detach=True,
-            ports=[8080],
+            ports={8080: None},
             mem_limit=config.mem_limit,
             nano_cpus=int(config.cpu_count * 1e9),
             network=config.network,
-            binds=[
-                f"{config.workspace_path}:/data/workspace:ro",
-                f"{config.skills_path}:/data/skills:ro",
-            ],
-            port_binding={8080: None},
+            volumes={
+                config.workspace_path: {"bind": "/data/workspace", "mode": "ro"},
+                config.skills_path: {"bind": "/data/skills", "mode": "ro"},
+            },
         )
 
         if config.runtime == "runsc":

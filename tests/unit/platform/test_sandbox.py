@@ -391,9 +391,9 @@ class TestDockerSandbox:
         call_kwargs = mock_docker_client.containers.create.call_args[1]
         assert call_kwargs["mem_limit"] == "256m"
         assert call_kwargs["nano_cpus"] == int(1 * 1e9)
-        binds = call_kwargs["binds"]
-        assert any("/tmp/workspace:/data/workspace:ro" in b for b in binds)
-        assert any("/tmp/skills:/data/skills:ro" in b for b in binds)
+        volumes = call_kwargs["volumes"]
+        assert volumes["/tmp/workspace"] == {"bind": "/data/workspace", "mode": "ro"}
+        assert volumes["/tmp/skills"] == {"bind": "/data/skills", "mode": "ro"}
 
     async def test_create_sets_labels(
         self,
@@ -441,7 +441,7 @@ class TestDockerSandbox:
         ports = mock_docker_client.containers.create.call_args[1].get("ports", [])
         assert 8080 in ports
 
-    async def test_create_passes_port_bindings(
+    async def test_create_passes_port_mapping(
         self,
         sandbox_config: SandboxConfig,
         mock_docker_client: MagicMock,
@@ -454,8 +454,8 @@ class TestDockerSandbox:
         await sandbox.create(sandbox_config)
 
         call_kwargs = mock_docker_client.containers.create.call_args[1]
-        assert "port_binding" in call_kwargs
-        assert call_kwargs["port_binding"] == {8080: None}
+        assert "ports" in call_kwargs
+        assert call_kwargs["ports"] == {8080: None}
 
     async def test_create_extracts_port_from_container(
         self,
