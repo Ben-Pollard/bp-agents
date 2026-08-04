@@ -4,8 +4,11 @@ import os
 import time
 
 import httpx
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from bp_agents.platform.tracker import Tracker
+from bp_agents.workflows.sdd.graph import build_ticket_pipeline
+from bp_agents.workflows.sdd.state import TicketPipelineState
 from bp_agents.workflows.sdd.tracker import PlaneTracker
 
 logger = logging.getLogger(__name__)
@@ -16,6 +19,7 @@ POLL_INTERVAL = int(os.getenv("BP_POLL_INTERVAL", "5"))
 PLANE_API_KEY = os.getenv("PLANE_API_KEY", "")
 PLANE_WORKSPACE_SLUG = os.getenv("PLANE_WORKSPACE_SLUG", "")
 PLANE_PROJECT = os.getenv("PLANE_PROJECT", "default")
+PIPELINE_DB_PATH = os.getenv("BP_PIPELINE_DB_PATH", "pipeline_checkpoints.db")
 
 
 def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
@@ -29,6 +33,18 @@ def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
             logger.debug("%s not ready yet, retrying...", name)
             time.sleep(1)
     raise RuntimeError("%s did not become ready within %ds" % (name, timeout))
+
+
+def _to_pipeline_state(ticket, project: str) -> TicketPipelineState:
+    return {
+        "ticket_id": ticket.id,
+        "project": project,
+        "status": "implementing",
+        "tdd_output": None,
+        "review_output": None,
+        "revision_output": None,
+        "diff": None,
+    }
 
 
 def main(tracker: Tracker | None = None) -> None:
@@ -49,18 +65,29 @@ def main(tracker: Tracker | None = None) -> None:
 
     logger.info("orchestrator ready")
 
-    try:
-        while True:
-            try:
-                ready = asyncio.run(tracker.list_ready(PLANE_PROJECT))
-                logger.info(
-                    "ticket discovery: %d ready  project=%s", len(ready), PLANE_PROJECT
-                )
-            except Exception:
-                logger.exception("ticket discovery failed")
-            time.sleep(POLL_INTERVAL)
-    except KeyboardInterrupt:
-        logger.info("orchestrator shutting down")
+    with SqliteSaver.from_conn_string(PIPELINE_DB_PATH) as checkpointer:
+        pipeline = build_ticket_pipeline(checkpointer=checkpointer)
+
+        try:
+            while True:
+                try:
+                    ready = asyncio.run(tracker.list_ready(PLANE_PROJECT))
+                    logger.info(
+                        "ticket discovery: %d ready  project=%s",
+                        len(ready),
+                        PLANE_PROJECT,
+                    )
+                    for ticket in ready:
+                        state = _to_pipeline_state(ticket, PLANE_PROJECT)
+                        config = {
+                            "configurable": {"thread_id": ticket.id},
+                        }
+                        pipeline.invoke(state, config)
+                except Exception:
+                    logger.exception("ticket discovery failed")
+                time.sleep(POLL_INTERVAL)
+        except KeyboardInterrupt:
+            logger.info("orchestrator shutting down")
 
 
 if __name__ == "__main__":

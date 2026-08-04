@@ -41,7 +41,7 @@ mitmproxy web interface at port 8081. Inspect and verify egress traffic against 
 
 ### Orchestrator
 
-Long-lived LangGraph process. Logs "ready" after connecting to all dependencies. No pipeline logic yet.
+Long-lived LangGraph process. Polls Plane for ready tickets and dispatches them through the SDD pipeline state machine with SqliteSaver persistence.
 
 ## Configuration
 
