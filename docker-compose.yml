@@ -24,61 +24,35 @@ services:
     networks:
       - bp_agents
 
-  plane:
-    image: makeplane/plane-aio-commercial:stable
+  redmine:
+    image: redmine:6
     ports:
-      - "8082:80"
+      - "8082:3000"
     environment:
-      - DATABASE_URL=postgresql://plane:plane_dev@plane-db:5432/plane
-      - DOMAIN_NAME=localhost
-      - SECRET_KEY=plane_secret_key_dev_only
-      - PLANE_BASE_URL=http://localhost:8082
-      - REDIS_URL=redis://plane-redis:6379
-      - AMQP_URL=amqp://guest:guest@rabbitmq:5672
-      - AWS_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=minioadmin
-      - AWS_SECRET_ACCESS_KEY=miniosecret
-      - AWS_S3_BUCKET_NAME=plane
-    entrypoint: >
-      sh -c "
-      sed -i 's/from mcp.client.streamable_http import streamablehttp_client/from mcp.client.streamable_http import streamable_http_client as streamablehttp_client/' /app/backend/plane/silo/services/mcp_connection.py &&
-      exec /app/start.sh
-      "
+      REDMINE_DB_POSTGRES: redmine-db
+      REDMINE_DB_PORT: 5432
+      REDMINE_DB_USER: redmine
+      REDMINE_DB_PASSWORD: redmine_dev
+      REDMINE_DB_DATABASE: redmine
     depends_on:
-      postgres:
+      redmine-db:
         condition: service_healthy
-      plane-db:
-        condition: service_healthy
-      plane-redis:
-        condition: service_started
-      rabbitmq:
-        condition: service_started
     networks:
       - bp_agents
 
-  plane-redis:
-    image: redis:7
-    networks:
-      - bp_agents
-
-  rabbitmq:
-    image: rabbitmq:4-alpine
-    networks:
-      - bp_agents
-
-  plane-db:
+  redmine-db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: plane
-      POSTGRES_PASSWORD: plane_dev
-      POSTGRES_DB: plane
+      POSTGRES_USER: redmine
+      POSTGRES_PASSWORD: redmine_dev
+      POSTGRES_DB: redmine
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U plane"]
+      test: ["CMD-SHELL", "pg_isready -U redmine"]
       interval: 5s
       timeout: 5s
       retries: 5
     volumes:
-      - plane_db_data:/var/lib/postgresql/data
+      - redmine_db_data:/var/lib/postgresql/data
     networks:
       - bp_agents
 
@@ -124,7 +98,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      plane:
+      redmine:
         condition: service_started
       langfuse:
         condition: service_started
@@ -135,7 +109,7 @@ services:
 
 volumes:
   postgres_data:
-  plane_db_data:
+  redmine_db_data:
   clickhouse_data:
 
 networks:

@@ -1,6 +1,6 @@
 # Architectural Principles
 
-- **Adopt, don't build.** Prefer existing platforms (Plane, Langfuse, LangGraph) over custom solutions. Only build what bridges them.
+- **Adopt, don't build.** Prefer existing platforms (Redmine, Langfuse, LangGraph) over custom solutions. Only build what bridges them.
 - **The graph is the test surface.** Tests invoke `graph.invoke()`, not internal functions. Nodes take dependencies via `Runtime[Context]`.
 - **Module boundaries are seams.** Only create ports when there are (or will be) multiple adapters. One adapter = no port.
 - **Skills keep their git-availability check.** Skills work identically in and out of the orchestrator; git is simply absent in the sandbox.

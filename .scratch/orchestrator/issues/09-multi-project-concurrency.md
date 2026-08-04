@@ -82,7 +82,7 @@ The orchestrator manages multiple projects concurrently from a single process. E
 
 - **ADR-0001**: LangGraph — RetryPolicy for retries, timeout via LangGraph timeout policies.
 - The orchestrator manages multiple projects concurrently from a single process. Each project has its own configuration.
-- Environment variable configuration via `.env` + `python-dotenv`: `BP_CONCURRENCY`, `BP_PROJECTS`, per-project `BP_PROJECT_<NAME>_REPO` and `BP_PROJECT_<NAME>_PLANE_PROJECT_ID`.
+- Environment variable configuration via `.env` + `python-dotenv`: `BP_CONCURRENCY`, `BP_PROJECTS`, per-project `BP_PROJECT_<NAME>_REPO` and `BP_PROJECT_<NAME>_REDMINE_PROJECT_ID`.
 
 ### Testing Decisions
 

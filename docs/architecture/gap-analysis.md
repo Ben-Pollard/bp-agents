@@ -17,10 +17,10 @@ Build from scratch:
 
 - **Platform layer** — LangGraph runner, tracker port, sandbox port, opencode HTTP client, CLI framework. Reusable across workflows.
 - **SDD workflow** — Specific LangGraph graph implementing the software development pipeline. Nested: feature graph contains ticket subgraphs.
-- **Tracker port** — Generic tracker ABC in platform. SDD workflow provides the Plane adapter (`PlaneTracker`).
+- **Tracker port** — Generic tracker ABC in platform. SDD workflow provides the Redmine adapter (`RedmineTracker`).
 - **Sandbox adapter** — `docker-py` wrapper with gVisor runtime, creating ephemeral containers per dispatch with HTTP forward proxy for egress enforcement.
 - **Agent client** — `httpx`-based wrapper for opencode's HTTP API (create session, prompt, stream events).
-- **Infrastructure** — Docker Compose managing orchestrator, Plane, Langfuse, SQLite, and egress proxy.
+- **Infrastructure** — Docker Compose managing orchestrator, Redmine, Langfuse, SQLite, and egress proxy.
 
 ## Module Interfaces
 
@@ -257,7 +257,7 @@ class SDDFeatureState(TypedDict):
     interventions: list[Intervention]
 ```
 
-### `workflows.sdd.tracker` — Plane adapter (SDD workflow)
+### `workflows.sdd.tracker` — Redmine adapter (SDD workflow)
 
 ```python
 from dataclasses import dataclass
@@ -265,20 +265,20 @@ from datetime import datetime
 
 @dataclass
 class Ticket:
-    """SDD work-item model. Plane work item UUID mapped to SDD TicketState."""
+    """SDD work-item model. Redmine issue ID mapped to SDD TicketState."""
     id: str
     name: str
-    description: str | None    # HTML body from Plane
-    state: TicketState         # mapped from Plane state group
+    description: str | None    # text body from Redmine
+    state: TicketState         # mapped from Redmine issue status
     project: str
     labels: list[str]
     created_at: datetime | None
     updated_at: datetime | None
 
-class PlaneTracker(Tracker):
-    """Adapter for Plane.so self-hosted REST API. Implements platform's Tracker port.
-    Maps Plane state groups to SDD TicketState."""
-    def __init__(self, base_url: str, api_key: str, workspace_slug: str): ...
+class RedmineTracker(Tracker):
+    """Adapter for Redmine REST API. Implements platform's Tracker port.
+    Maps Redmine issue statuses to SDD TicketState."""
+    def __init__(self, base_url: str, api_key: str): ...
 ```
 
 ### `docker-compose.yml` — service layout
@@ -294,9 +294,24 @@ services:
     depends_on:
       - egress-proxy
 
-  plane:
-    image: makeplane/plane:latest
-    # ... Plane's own Compose config, imported or referenced
+  redmine:
+    image: redmine:6
+    ports:
+      - "8082:3000"
+    environment:
+      REDMINE_DB_POSTGRES: redmine-db
+    depends_on:
+      redmine-db:
+        condition: service_healthy
+
+  redmine-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: redmine
+      POSTGRES_PASSWORD: redmine_dev
+      POSTGRES_DB: redmine
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U redmine"]
 
   langfuse:
     image: langfuse/langfuse:latest
@@ -311,10 +326,10 @@ services:
 ### `.env.example` — secrets template
 
 ```bash
-# Plane tracker
-PLANE_BASE_URL=http://plane:8080
-PLANE_API_KEY=plane_api_key_here
-PLANE_WORKSPACE_SLUG=my-workspace
+# Redmine tracker
+REDMINE_BASE_URL=http://redmine:3000
+REDMINE_API_KEY=redmine_api_key_here
+REDMINE_PROJECT_ID=my-project
 
 # Langfuse observability
 LANGFUSE_PUBLIC_KEY=pk-lf-...
@@ -327,7 +342,7 @@ OPENROUTER_API_KEY=sk-or-...
 # Projects
 BP_PROJECTS=example-project
 BP_PROJECT_EXAMPLE_PROJECT_REPO=/data/repos/example-project
-BP_PROJECT_EXAMPLE_PROJECT_PLANE_PROJECT_ID=uuid-here
+BP_PROJECT_EXAMPLE_PROJECT_REDMINE_PROJECT_ID=identifier-here
 
 # Concurrency
 BP_CONCURRENCY=2
@@ -341,7 +356,7 @@ LangGraph's `SqliteSaver` manages its own schema. The orchestrator's persisted s
 
 - **ADR-0001**: LangGraph as pipeline engine — free, MIT-licensed, self-hosted. Provides checkpointer, retry policy, timeout, interrupt/resume, and state streaming.
 - **ADR-0002**: gVisor/Docker sandbox with ephemeral containers per dispatch. `docker-py` adapter, `--runtime=runsc`. Fallback to hardened plain Docker if gVisor compatibility fails smoke test.
-- **ADR-0003**: Plane.so as tracker — self-hosted project management with REST API for ticket CRUD and state management.
+- **ADR-0003**: Redmine as tracker — self-hosted project management with REST API for ticket CRUD and state management. Replaced Plane.so which had unresolvable API (POST /issues/ 404) and credential issues.
 - **ADR-0004**: Langfuse for observability — agent traces, orchestrator traces, contract exchanges, and future eval platform. Single pane for all trace data.
 - SQLite for state persistence via LangGraph's `SqliteSaver`. Chosen over Postgres for single-machine self-host simplicity. Swappable.
 - JSON contracts via prompt embed (outbound) and `outcome_path` file (inbound). Skills write structured JSON; orchestrator reads and validates.
@@ -349,9 +364,8 @@ LangGraph's `SqliteSaver` manages its own schema. The orchestrator's persisted s
 - Skills are copied from bp-agents `.agents/skills/` into workspace before dispatch. Skills retain `if git is available` git steps — git is unavailable in sandbox per egress policy.
 - Feature-level nested graph: one LangGraph graph per feature, containing ticket subgraphs (TDD → review → revision).
 - Node functions are idempotent: check for existing opencode session before creating, check for existing `outcome_path` before re-dispatching.
-- SDD-specific contracts (TicketState, StageName, InterventionType, ACChange, Intervention) live in `workflows.sdd`, not `platform.contracts`. Platform contracts are workflow-agnostic. The tracker port is platform-level; `PlaneTracker` and `Ticket` are SDD adapters.
-- Environment variable configuration via `.env` + `python-dotenv`. Docker Compose injects into containers. No custom config file format.
-- All services managed via Docker Compose: orchestrator, Plane, Langfuse, egress proxy.
+- SDD-specific contracts (TicketState, StageName, InterventionType, ACChange, Intervention) live in `workflows.sdd`, not `platform.contracts`. Platform contracts are workflow-agnostic. The tracker port is platform-level; `RedmineTracker` and `Ticket` are SDD adapters.
+- All services managed via Docker Compose: orchestrator, Redmine, Langfuse, egress proxy.
 
 ## Decisions Deferred
 
@@ -369,10 +383,10 @@ LangGraph's `SqliteSaver` manages its own schema. The orchestrator's persisted s
 | Dependency direction | Nodes receive deps via Runtime[Context]; platform layer has no workflow dependency |
 | Domain boundaries | Orchestrator ↔ Agent separated by JSON contracts and sandbox boundary |
 | Data models | TicketState, StageName, stage output types, SDDFeatureState defined |
-| Data flow | Push: orchestrator polls Plane → dispatches agent → reads outcome_path → updates Plane |
+| Data flow | Push: orchestrator polls Redmine → dispatches agent → reads outcome_path → updates Redmine |
 | State ownership | LangGraph checkpointer owns all state; orchestrator is sole writer |
-| Storage technology | SQLite for state; Plane (Postgres internally) for ticket data |
-| Protocol choices | REST (Plane), HTTP API (opencode), HTTP_PROXY (egress), JSON (contracts) |
+| Storage technology | SQLite for state; Redmine (Postgres internally) for ticket data |
+| Protocol choices | REST (Redmine), HTTP API (opencode), HTTP_PROXY (egress), JSON (contracts) |
 | Message/event architecture | LangGraph state transitions are observable events; stdout logging per ACs |
 | Integration patterns | HTTP API clients for external systems; adapters hide protocol details |
 | Reliability | LangGraph RetryPolicy, timeout, interrupt/resume, checkpoint-based crash recovery |
@@ -382,16 +396,16 @@ LangGraph's `SqliteSaver` manages its own schema. The orchestrator's persisted s
 | Observability | Structured stdout (operational), Langfuse (traces + evals) |
 | Configuration | Environment variables via .env + python-dotenv |
 | Build/CI/CD | Docker Compose manages all services; pre-commit via ruff + pytest |
-| Deployment model | Docker Compose: orchestrator, Plane, Langfuse, egress proxy, SQLite |
+| Deployment model | Docker Compose: orchestrator, Redmine, Langfuse, egress proxy, SQLite |
 | Test strategy | Node tests (mocked deps) → pipeline tests (fake opencode) → E2E tests (real everything) |
 | Repository structure | Single repo for platform + workflows + infra; target projects external |
 
 ## Open Risks
 
 - **gVisor compatibility with opencode** — opencode's tool loop (bash, file writes, LSP) may hit syscall gaps. Smoke test before committing. Fallback: hardened plain Docker.
-- **Plane state group mapping** — Plane state groups (`backlog`, `started`, `completed`, `cancelled`) don't cleanly map to our 11 ticket states. May need custom Plane states.
+- **Redmine status-to-state mapping** — Redmine default statuses (New, In Progress, Resolved, Closed, Rejected) don't cleanly map to our 11 ticket states. May need custom Redmine statuses.
 - **opencode serve API stability** — The HTTP API is relatively new. Contract shape may change. Version-pin the opencode image.
 - **Langfuse self-host complexity** — Needs to be verified as Docker Compose-able with minimal config.
 - **Skill git steps in sandbox** — TDD/revision skills run `git add`/`git commit`. If git is blocked (AC-23) but still partially installed, edge cases may surface (git hangs vs clean error).
-- **Feature-level AC tracking** — ACs are per-feature but tickets are per-Plane-item. How ACs flow from feature-level state into individual ticket contracts needs refinement during implementation.
+- **Feature-level AC tracking** — ACs are per-feature but tickets are per-Redmine-item. How ACs flow from feature-level state into individual ticket contracts needs refinement during implementation.
 - **Outcome_path convention** — Skills are instructed to write to `outcome_path`. If a skill doesn't respect this (e.g., writes somewhere else), the orchestrator gets no output. Mitigated by prompt instructions and verified in pipeline tests.

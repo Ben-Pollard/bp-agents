@@ -1,4 +1,4 @@
-Status: in-progress
+Status: ready-for-human
 
 # 02 — Tracker port + Pipeline engine skeleton
 
@@ -13,7 +13,7 @@ Status: in-progress
 
 Two connected pieces:
 
-1. **Tracker port + Plane adapter** — `platform.tracker` ABC, `PlaneTracker` adapter in `workflows.sdd`, Plane in Compose. Orchestrator polls Plane for ready tickets, logs discovery counts per tick.
+1. **Tracker port + Redmine adapter** — `platform.tracker` ABC, `RedmineTracker` adapter in `workflows.sdd`, Redmine in Compose. Orchestrator polls Redmine for ready tickets, logs discovery counts per tick.
 
 2. **Pipeline engine skeleton** — A LangGraph graph implementing the full ticket state machine (all 11 TicketState values) with stubbed agent nodes. Tickets discovered by the tracker flow through state transitions; every transition is logged to stdout with timestamp. State is persisted via SqliteSaver so a stopped pipeline resumes at its last state. Feature-level nested graph structure is in place.
 
@@ -118,7 +118,7 @@ class Tracker(ABC):
     async def add_comment(self, item_id: str, body: str) -> None: ...
 ```
 
-**Module: `workflows.sdd.tracker`** — Plane adapter (SDD workflow)
+**Module: `workflows.sdd.tracker`** — Redmine adapter (SDD workflow)
 
 ```python
 from dataclasses import dataclass
@@ -126,20 +126,20 @@ from datetime import datetime
 
 @dataclass
 class Ticket:
-    """SDD work-item model. Plane work item UUID mapped to SDD TicketState."""
+    """SDD work-item model. Redmine issue ID mapped to SDD TicketState."""
     id: str
     name: str
-    description: str | None    # HTML body from Plane
-    state: TicketState         # mapped from Plane state group
+    description: str | None
+    state: TicketState
     project: str
     labels: list[str]
     created_at: datetime | None
     updated_at: datetime | None
 
-class PlaneTracker(Tracker):
-    """Adapter for Plane.so self-hosted REST API. Implements platform's Tracker port.
-    Maps Plane state groups to SDD TicketState."""
-    def __init__(self, base_url: str, api_key: str, workspace_slug: str): ...
+class RedmineTracker(Tracker):
+    """Adapter for Redmine REST API. Implements platform's Tracker port.
+    Maps Redmine issue statuses to SDD TicketState."""
+    def __init__(self, base_url: str, api_key: str): ...
 ```
 
 **Module: `workflows.sdd.graph`** — pipeline state
@@ -174,16 +174,21 @@ class SDDFeatureState(TypedDict):
 **Decisions made** (from gap analysis):
 
 - **ADR-0001**: LangGraph as pipeline engine — free, MIT-licensed, self-hosted. Provides checkpointer, retry policy, timeout, interrupt/resume, and state streaming.
-- **ADR-0003**: Plane.so as tracker — self-hosted project management with REST API for ticket CRUD and state management.
+- **ADR-0003**: Redmine as tracker — self-hosted project management with REST API for ticket CRUD and state management. Replaced Plane.so which had unresolvable API and credential issues.
 - SQLite for state persistence via LangGraph's `SqliteSaver`. Chosen over Postgres for single-machine self-host simplicity. Swappable.
 - Feature-level nested graph: one LangGraph graph per feature, containing ticket subgraphs (TDD → review → revision).
 - Node functions are idempotent: check for existing opencode session before creating, check for existing `outcome_path` before re-dispatching.
-- The tracker port is platform-level; `PlaneTracker` and `Ticket` are SDD adapters.
+- The tracker port is platform-level; `RedmineTracker` and `Ticket` are SDD adapters.
 
-**Open Risks** (from gap analysis):
+**Resolved Risks** (from previous Plane.so implementation):
 
-- **Plane state group mapping** — Plane state groups (`backlog`, `started`, `completed`, `cancelled`) don't cleanly map to our 11 ticket states. May need custom Plane states.
-- **Feature-level AC tracking** — ACs are per-feature but tickets are per-Plane-item. How ACs flow from feature-level state into individual ticket contracts needs refinement during implementation.
+- ~~Plane state group mapping~~ — Redmine issue statuses are fully customizable. Map SDD states directly to Redmine statuses via the admin UI or API.
+- ~~Plane POST /issues/ 404 bug~~ — Redmine REST API supports full issue CRUD (GET, POST, PUT, DELETE) on `/issues.json`.
+- ~~Plane UI credentials unknown~~ — Redmine default credentials (admin/admin) with forced password change on first login.
+
+**Open Risks**:
+
+- **Redmine status-to-state mapping** — Need to define which Redmine issue statuses map to which SDD TicketState values. Redmine defaults: New → Ready, In Progress → Implementing, Resolved → Awaiting review, etc. Custom statuses may be needed.
 
 ### Testing Decisions
 
@@ -195,25 +200,37 @@ None specific to this slice.
 
 ## This Ticket's Acceptance Criteria
 
-- [ ] `PlaneTracker.list_ready("project-name")` returns tickets from Plane API
-- [ ] `PlaneTracker.update_state(ticket_id, state)` updates Plane state group
+- [ ] `RedmineTracker.list_ready("project-name")` returns issues from Redmine API
+- [ ] `RedmineTracker.update_state(ticket_id, state)` updates Redmine issue status
 - [ ] Poll loop discovers ready tickets and logs count per tick (`ticket discovery: <N> ready`)
 - [ ] Graph transition logs `ticket <id>: <from> -> <to>` with timestamp for every transition
 - [ ] Stopped orchestrator resumes pipeline from last persisted state (SqliteSaver checkpoint)
 - [ ] Multiple tickets flowing through the graph concurrently without interference
-- [ ] Tickets grouped by project in logs and Plane UI
+- [ ] Tickets grouped by project in logs and Redmine UI
 
 ## Blocked by
 
 - #01 Infrastructure + Contracts
 
-## Outcome
+## Outcome — REPLACED
 
-Tracker port (ABC), PlaneTracker adapter, and LangGraph pipeline skeleton implemented. All 7 ACs met. 58/58 tests pass, ruff clean.
+The original implementation built a PlaneTracker adapter and LangGraph pipeline skeleton. All code-side ACs passed (60/60 unit tests, 3/3 integration tests, ruff clean). However, 3 ACs were blocked by Plane infrastructure issues:
 
-- Implement: `.scratch/orchestrator/outcomes/implement-outcome.json`
-- Review: `.scratch/orchestrator/outcomes/review-outcome.json`
-- Reduction: `.scratch/orchestrator/outcomes/reduction-outcome.json`
-- Verify: `.scratch/orchestrator/outcomes/verify-outcome.json`
+1. **Plane API POST /issues/ returns 404** — commercial image bug, could not create tickets programmatically.
+2. **Plane workspace owner credentials unknown** — could not sign into Plane web UI.
+3. **Cross-project ticket creation** blocked by #1.
 
-**Known issue (not blocking):** Alternating poll cycle failures due to `asyncio.run()` creating/destroying event loop per iteration while shared `httpx.AsyncClient` references a closed loop. Follow-up ticket recommended.
+These blockers are resolved by migrating to Redmine. The existing PlaneTracker code will be replaced with a RedmineTracker adapter in a future session.
+
+**Migration context:**
+- Plane services (`plane`, `plane-db`, `plane-redis`, `rabbitmq`) removed from docker-compose.yml
+- Redmine + redmine-db added in their place
+- `.env.example` updated: `PLANE_*` → `REDMINE_*`
+- ADR-0003 updated to reflect Redmine choice
+- Volume `plane_db_data` removed, `redmine_db_data` added
+- Implement outcomes: `.scratch/orchestrator/outcomes/implement-outcome.json`
+- Review outcomes: `.scratch/orchestrator/outcomes/review-outcome.json`
+- Reduction outcomes: `.scratch/orchestrator/outcomes/reduction-outcome.json`
+- Verify outcomes: `.scratch/orchestrator/outcomes/verify-outcome.json`
+
+Redmine default credentials: `admin` / `admin` (prompts for password change on first login).

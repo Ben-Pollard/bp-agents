@@ -11,7 +11,7 @@ Status: done
 
 ## What to Build
 
-Scaffold the project: Docker Compose layout managing all services (orchestrator, Plane, Langfuse, egress proxy), `.env` configuration, all shared TypedDicts/enums/ABCs, and a README documenting how to start everything and access each front-end.
+Scaffold the project: Docker Compose layout managing all services (orchestrator, Redmine, Langfuse, egress proxy), `.env` configuration, all shared TypedDicts/enums/ABCs, and a README documenting how to start everything and access each front-end.
 
 The orchestrator binary exists but does nothing except log "ready" and connect to its dependencies. No pipeline logic yet.
 
@@ -179,9 +179,24 @@ services:
     depends_on:
       - egress-proxy
 
-  plane:
-    image: makeplane/plane:latest
-    # ... Plane's own Compose config, imported or referenced
+  redmine:
+    image: redmine:6
+    ports:
+      - "8082:3000"
+    environment:
+      REDMINE_DB_POSTGRES: redmine-db
+    depends_on:
+      redmine-db:
+        condition: service_healthy
+
+  redmine-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: redmine
+      POSTGRES_PASSWORD: redmine_dev
+      POSTGRES_DB: redmine
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U redmine"]
 
   langfuse:
     image: langfuse/langfuse:latest
@@ -196,10 +211,10 @@ services:
 **Secrets template: `.env.example`**
 
 ```bash
-# Plane tracker
-PLANE_BASE_URL=http://plane:8080
-PLANE_API_KEY=plane_api_key_here
-PLANE_WORKSPACE_SLUG=my-workspace
+# Redmine tracker
+REDMINE_BASE_URL=http://redmine:3000
+REDMINE_API_KEY=redmine_api_key_here
+REDMINE_PROJECT_ID=my-project
 
 # Langfuse observability
 LANGFUSE_PUBLIC_KEY=pk-lf-...
@@ -212,7 +227,7 @@ OPENROUTER_API_KEY=sk-or-...
 # Projects
 BP_PROJECTS=example-project
 BP_PROJECT_EXAMPLE_PROJECT_REPO=/data/repos/example-project
-BP_PROJECT_EXAMPLE_PROJECT_PLANE_PROJECT_ID=uuid-here
+BP_PROJECT_EXAMPLE_PROJECT_REDMINE_PROJECT_ID=identifier-here
 
 # Concurrency
 BP_CONCURRENCY=2
@@ -224,7 +239,7 @@ LangGraph's `SqliteSaver` manages its own schema. The orchestrator's persisted s
 
 **Architecture principles** (from `docs/architecture/principles.md`):
 
-- **Adopt, don't build.** Prefer existing platforms (Plane, Langfuse, LangGraph) over custom solutions. Only build what bridges them.
+- **Adopt, don't build.** Prefer existing platforms (Redmine, Langfuse, LangGraph) over custom solutions. Only build what bridges them.
 - **Module boundaries are seams.** Only create ports when there are (or will be) multiple adapters. One adapter = no port.
 - **Skills keep their git-availability check.** Skills work identically in and out of the orchestrator; git is simply absent in the sandbox.
 - **Ephemeral sandboxes, persistent workspace.** Containers are per-dispatch; the workspace survives on the host across stages.
@@ -234,7 +249,7 @@ LangGraph's `SqliteSaver` manages its own schema. The orchestrator's persisted s
 
 - SDD-specific contracts (TicketState, StageName, InterventionType, ACChange, Intervention) live in `workflows.sdd`, not `platform.contracts`. Platform contracts are workflow-agnostic.
 - Environment variable configuration via `.env` + `python-dotenv`. Docker Compose injects into containers. No custom config file format.
-- All services managed via Docker Compose: orchestrator, Plane, Langfuse, egress proxy.
+- All services managed via Docker Compose: orchestrator, Redmine, Langfuse, egress proxy.
 - Skills are copied from bp-agents `.agents/skills/` into workspace before dispatch. Skills retain `if git is available` git steps — git is unavailable in sandbox per egress policy.
 
 ### Testing Decisions
@@ -250,7 +265,7 @@ Repository structure: Single repo for platform + workflows + infra; target proje
 
 ## This Ticket's Acceptance Criteria
 
-- [ ] `docker compose up` starts all services (orchestrator, Plane, Langfuse, egress proxy) without errors
+- [ ] `docker compose up` starts all services (orchestrator, Redmine, Langfuse, egress proxy) without errors
 - [ ] `docker compose ps` shows all services as healthy/running
 - [ ] All contract TypedDicts and enums in `platform.contracts` and `workflows.sdd.contracts` are importable without runtime errors
 - [ ] README documents how to start services and access each front-end (URL, credentials if any, what each shows)
@@ -262,7 +277,7 @@ None — can start immediately.
 
 ## Outcome
 
-Scaffolded project with Docker Compose (9 services: orchestrator, Plane, langfuse, ClickHouse, egress-proxy, postgres, plane-db, plane-redis, rabbitmq), shared contract TypedDicts/enums/ABCs in `bp_agents.platform.contracts` and `bp_agents.workflows.sdd.contracts`, orchestrator binary that logs "ready" and connects to dependencies, `.env.example`, `README.md`, `Dockerfile`. All 19 tests pass, all ACs satisfied.
+Scaffolded project with Docker Compose (9 services originally: orchestrator, Plane, langfuse, ClickHouse, egress-proxy, postgres, plane-db, plane-redis, rabbitmq). **Plane has since been replaced by Redmine.** Current Compose: orchestrator, Redmine, redmine-db, Langfuse, ClickHouse, egress-proxy, postgres. Shared contract TypedDicts/enums/ABCs in `bp_agents.platform.contracts` and `bp_agents.workflows.sdd.contracts`, orchestrator binary that logs "ready" and connects to dependencies, `.env.example`, `README.md`, `Dockerfile`. All 19 tests pass, all ACs satisfied.
 
 - Implement: `.scratch/orchestrator/outcomes/implement-outcome.json`
 - Review: `.scratch/orchestrator/outcomes/review-outcome.json`

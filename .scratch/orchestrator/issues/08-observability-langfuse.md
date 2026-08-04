@@ -13,7 +13,7 @@ Status: ready-for-agent
 
 Integrate Langfuse for observability. LangGraph callback pushes orchestrator-level traces to Langfuse. Agent session content at LLM-conversation granularity appears in Langfuse traces. Complete ticket history recoverable from ticket ID: every state transition, every contract exchanged, every human intervention, every AC changelog entry, every failure and retry. Langfuse runs in Docker Compose, accessible via documented URL.
 
-No custom dashboard — Langfuse is the trace front-end; Plane is the ticket state front-end; CLI is the action surface.
+No custom dashboard — Langfuse is the trace front-end; Redmine is the ticket state front-end; CLI is the action surface.
 
 ## Requirements
 

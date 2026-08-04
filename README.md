@@ -17,29 +17,28 @@ All services start via `docker compose up`.
 
 | Service       | URL                   | Purpose                                      | Credentials                |
 | ------------- | --------------------- | -------------------------------------------- | -------------------------- |
-| Plane         | http://localhost:8082  | Ticket tracker (issue management)            | Configure via `.env`       |
+| Redmine       | http://localhost:8082  | Ticket tracker (issue management)            | Configure via `.env`       |
 | Langfuse      | http://localhost:8083  | LLM observability (traces, evals)            | Configure via `.env`       |
 | ClickHouse    | http://localhost:8123  | Columnar DB (required by Langfuse V3/V4)     | None                       |
 | egress-proxy  | http://localhost:8081  | mitmproxy web UI (inspect egress traffic)    | None                       |
 | Orchestrator  | (logs only)           | LangGraph process driving the SDD pipeline   | None                       |
 
-### Plane
+### Redmine
 
-Issue tracker front-end. Create projects, tickets, and manage the SDD ticket lifecycle. Uses the `makeplane/plane-aio-commercial:stable` image (all-in-one; port 80 inside container, mapped to 8082 on host).
+Issue tracker front-end. Create projects, tickets, and manage the SDD ticket lifecycle. Uses the `redmine:6` image (port 3000 inside container, mapped to 8082 on host).
 
 #### First-time setup
 
-After starting Plane (`docker compose up`), create an admin user and API key:
+After starting Redmine (`docker compose up`), create an admin user and API key:
 
 1. Open http://localhost:8082 in a browser.
-2. Complete the initial sign-up form to create the admin user.
-3. Navigate to **Settings → API Tokens** and generate an API key.
-4. Copy the API key to `.env` as `PLANE_API_KEY`.
-5. Create a workspace (e.g. `bp-agents`) and note the slug. Set `PLANE_WORKSPACE_SLUG` in `.env`.
-6. Create a project within the workspace and note its name. Set `PLANE_PROJECT` in `.env`.
-7. Create tickets with state group "Backlog" — the orchestrator polls for these as ready tickets.
+2. Sign in with default credentials: `admin` / `admin`. Change password when prompted.
+3. Navigate to **My account → API access key** and show/generate an API key.
+4. Copy the API key to `.env` as `REDMINE_API_KEY`.
+5. Create a project and note its identifier. Set `REDMINE_PROJECT_ID` in `.env`.
+6. Create tickets with status "New" — the orchestrator polls for these as ready tickets.
 
-**Caveat**: The Plane REST API (`POST /issues/`) may return 404 for ticket creation on some versions. If creation fails, use the Plane web UI instead. GET and PATCH work reliably.
+Redmine's REST API must be enabled. It is on by default. API docs at `http://localhost:8082/projects/<id>/api`.
 
 ### Langfuse
 
@@ -55,7 +54,7 @@ mitmproxy web interface at port 8081. Inspect and verify egress traffic against 
 
 ### Orchestrator
 
-Long-lived LangGraph process. Polls Plane for ready tickets and dispatches them through the SDD pipeline state machine with SqliteSaver persistence.
+Long-lived LangGraph process. Polls Redmine for ready tickets and dispatches them through the SDD pipeline state machine with SqliteSaver persistence.
 
 ## Configuration
 

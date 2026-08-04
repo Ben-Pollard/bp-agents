@@ -5,15 +5,15 @@ A ticket-driven autonomous software development agent. Discovers tickets from a 
 ## Language
 
 **Ticket**:
-A unit of work tracked in Plane, with ID, body, and state. The orchestrator discovers ready tickets via the tracker and drives them through the pipeline.
+A unit of work tracked in Redmine, with ID, body, and state. The orchestrator discovers ready tickets via the tracker and drives them through the pipeline.
 _Avoid_: Issue, task, card
 
 **Feature**:
 A collection of related tickets. The unit of verification and approval.
 _Avoid_: Epic, story
 
-**Tracker** (Plane adapter):
-The Plane API adapter that discovers ready tickets and updates their state. Implements the platform's tracker port.
+**Tracker** (Redmine adapter):
+The Redmine API adapter that discovers ready tickets and updates their state. Implements the platform's tracker port.
 _Avoid_: Backend, store, database
 
 **TicketState**:
