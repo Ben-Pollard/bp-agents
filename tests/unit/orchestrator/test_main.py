@@ -39,17 +39,13 @@ class TestWaitForDependency:
 
             mock_get.assert_called_once_with("http://example.com/health", timeout=5)
 
-    def test_retries_on_non_200(self) -> None:
+    def test_accepts_any_status_code(self) -> None:
         with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
-            mock_get.side_effect = [
-                mock.Mock(status_code=503),
-                mock.Mock(status_code=502),
-                mock.Mock(status_code=200),
-            ]
+            mock_get.return_value = mock.Mock(status_code=503)
 
             wait_for_dependency("http://example.com/health", "example", timeout=5)
 
-            assert mock_get.call_count >= 3
+            mock_get.assert_called_once_with("http://example.com/health", timeout=5)
 
     def test_retries_on_connect_error(self) -> None:
         with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:

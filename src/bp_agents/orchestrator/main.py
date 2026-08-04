@@ -13,7 +13,7 @@ from bp_agents.workflows.sdd.tracker import RedmineTracker
 
 logger = logging.getLogger(__name__)
 
-EGRESS_PROXY_URL = os.getenv("EGRESS_PROXY_URL", "http://egress-proxy:8081")
+EGRESS_PROXY_URL = os.getenv("EGRESS_PROXY_URL", "http://egress-proxy:8080")
 REDMINE_BASE_URL = os.getenv("REDMINE_BASE_URL", "http://redmine:3000")
 POLL_INTERVAL = int(os.getenv("BP_POLL_INTERVAL", "5"))
 REDMINE_API_KEY = os.getenv("REDMINE_API_KEY", "")
@@ -26,10 +26,8 @@ def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
     while time.time() - start < timeout:
         try:
             r = httpx.get(url, timeout=5)
-            if r.status_code == 200:
-                logger.info("%s responded with status %s", name, r.status_code)
-                return
-            logger.debug("%s returned status %s, retrying...", name, r.status_code)
+            logger.info("%s responded with status %s", name, r.status_code)
+            return
         except httpx.HTTPError:
             logger.debug("%s not ready yet, retrying...", name)
         time.sleep(1)

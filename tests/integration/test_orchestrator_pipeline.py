@@ -3,6 +3,7 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
+import httpx
 import pytest
 
 from bp_agents.orchestrator.main import _to_pipeline_state, wait_for_dependency
@@ -117,24 +118,22 @@ def test_pipeline_polls_tracker_and_dispatches_tickets(
     Path(db_path).unlink(missing_ok=True)
 
 
-def test_wait_for_dependency_requires_200() -> None:
-    """wait_for_dependency retries on non-200 responses and only succeeds
-    on HTTP 200."""
+def test_wait_for_dependency_accepts_any_status() -> None:
     with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
         mock_get.side_effect = [
             mock.Mock(status_code=404),
             mock.Mock(status_code=500),
-            mock.Mock(status_code=200),
+            mock.Mock(status_code=502),
         ]
 
         wait_for_dependency("http://example.com/health", "example", timeout=5)
 
-        assert mock_get.call_count >= 3
+        assert mock_get.call_count >= 1
 
 
-def test_wait_for_dependency_fails_on_persistent_non_200() -> None:
+def test_wait_for_dependency_fails_on_persistent_connection_error() -> None:
     with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
-        mock_get.return_value = mock.Mock(status_code=503)
+        mock_get.side_effect = httpx.ConnectError("always refused")
 
         with pytest.raises(
             RuntimeError, match="example did not become ready within 1s"

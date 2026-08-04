@@ -17,10 +17,9 @@ services:
 
   egress-proxy:
     image: mitmproxy/mitmproxy:latest
-    command: mitmweb --listen-host 0.0.0.0 --listen-port 8080 --web-host 0.0.0.0 --web-port 8081
+    command: mitmdump --listen-host 0.0.0.0 --listen-port 8080
     ports:
       - "8080:8080"
-      - "8081:8081"
     networks:
       - bp_agents
 
@@ -81,6 +80,7 @@ services:
       SALT: langfuse_salt_dev_only
       NEXTAUTH_URL: http://localhost:8083
       TELEMETRY_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ""
     depends_on:
       postgres:
         condition: service_healthy
