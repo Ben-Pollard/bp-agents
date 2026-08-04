@@ -3,7 +3,7 @@ from unittest import mock
 import httpx
 import pytest
 
-from bp_agents.orchestrator.main import POLL_INTERVAL, main, wait_for_dependency
+from bp_agents.orchestrator.main import POLL_INTERVAL, main_async, wait_for_dependency
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.contracts import TicketState
 
@@ -87,31 +87,30 @@ class TestPollInterval:
 
 
 class TestMain:
-    def test_main_logs_ready_when_all_dependencies_up(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_main_logs_ready(self, caplog: pytest.LogCaptureFixture) -> None:
+        import asyncio
         import logging
 
         caplog.set_level(logging.INFO)
 
-        with (
-            mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
-            mock.patch("bp_agents.orchestrator.main.time.sleep") as mock_sleep,
-            mock.patch("bp_agents.orchestrator.main.time.time") as mock_time,
-        ):
+        with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_get.return_value = mock_response
-            mock_time.side_effect = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-            mock_sleep.side_effect = KeyboardInterrupt
 
-            main(tracker=FakeTracker())
+            with (
+                mock.patch("bp_agents.orchestrator.main._poll_loop"),
+                mock.patch("bp_agents.orchestrator.main.time.sleep"),
+            ):
+                asyncio.run(main_async(tracker=FakeTracker()))
 
             records = [r.message for r in caplog.records]
+            assert "orchestrator starting..." in records
             assert "orchestrator ready" in records
-            assert "orchestrator shutting down" in records
 
     def test_main_raises_when_dependency_fails(self) -> None:
+        import asyncio
+
         with (
             mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
             mock.patch("bp_agents.orchestrator.main.time.time") as mock_time,
@@ -123,4 +122,4 @@ class TestMain:
             with pytest.raises(
                 RuntimeError, match="Redmine did not become ready within 120s"
             ):
-                main(tracker=FakeTracker())
+                asyncio.run(main_async(tracker=FakeTracker()))

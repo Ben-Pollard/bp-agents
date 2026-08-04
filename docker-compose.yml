@@ -80,7 +80,6 @@ services:
       SALT: langfuse_salt_dev_only
       NEXTAUTH_URL: http://localhost:8083
       TELEMETRY_ENABLED: "false"
-      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ""
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,17 +88,39 @@ services:
     networks:
       - bp_agents
 
+  redmine-setup:
+    build: .
+    command: [".venv/bin/python", "scripts/bootstrap_redmine.py"]
+    environment:
+      REDMINE_URL: http://redmine:3000
+      ADMIN_LOGIN: admin
+      ADMIN_PASSWORD: admin
+      BP_PROJECT_NAME: default
+      BP_PROJECT_ID: default
+      BP_ENV_OUTPUT: /data/env/.env
+      REDMINE_CONTAINER: bp-agents-redmine-1
+    volumes:
+      - bp_env:/data/env
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      redmine:
+        condition: service_started
+    networks:
+      - bp_agents
+
   orchestrator:
     build: .
-    env_file: .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./workspaces:/data/workspaces
+      - bp_env:/data/env
     depends_on:
       postgres:
         condition: service_healthy
       redmine:
         condition: service_started
+      redmine-setup:
+        condition: service_completed_successfully
       langfuse:
         condition: service_started
       egress-proxy:
@@ -111,6 +132,7 @@ volumes:
   postgres_data:
   redmine_db_data:
   clickhouse_data:
+  bp_env:
 
 networks:
   bp_agents:

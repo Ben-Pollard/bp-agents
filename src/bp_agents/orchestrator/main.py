@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import time
+from typing import Any
 
 import httpx
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -12,6 +13,22 @@ from bp_agents.workflows.sdd.state import TicketPipelineState
 from bp_agents.workflows.sdd.tracker import RedmineTracker
 
 logger = logging.getLogger(__name__)
+
+_ENV_PATH = "/data/env/.env"
+
+
+def _load_env_file() -> None:
+    if not os.path.exists(_ENV_PATH):
+        return
+    with open(_ENV_PATH) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
+
+
+_load_env_file()
 
 EGRESS_PROXY_URL = os.getenv("EGRESS_PROXY_URL", "http://egress-proxy:8080")
 REDMINE_BASE_URL = os.getenv("REDMINE_BASE_URL", "http://redmine:3000")
@@ -49,7 +66,27 @@ def _to_pipeline_state(ticket: dict, project: str) -> TicketPipelineState:
     }
 
 
-def main(tracker: Tracker | None = None) -> None:
+async def _poll_loop(tracker: Tracker, pipeline: Any) -> None:
+    while True:
+        try:
+            ready = await tracker.list_ready(REDMINE_PROJECT)
+            logger.info(
+                "ticket discovery: %d ready  project=%s",
+                len(ready),
+                REDMINE_PROJECT,
+            )
+            for ticket in ready:
+                state = _to_pipeline_state(ticket, REDMINE_PROJECT)
+                config = {
+                    "configurable": {"thread_id": ticket["id"]},
+                }
+                pipeline.invoke(state, config)
+        except Exception:
+            logger.exception("ticket discovery failed")
+        await asyncio.sleep(POLL_INTERVAL)
+
+
+async def main_async(tracker: Tracker | None = None) -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
@@ -63,34 +100,17 @@ def main(tracker: Tracker | None = None) -> None:
             base_url=REDMINE_BASE_URL,
             api_key=REDMINE_API_KEY,
         )
-        asyncio.run(tracker.ensure_statuses())
+        await tracker.ensure_statuses()
 
     logger.info("orchestrator ready")
 
     with SqliteSaver.from_conn_string(PIPELINE_DB_PATH) as checkpointer:
         pipeline = build_ticket_pipeline(checkpointer=checkpointer)
-
-        try:
-            while True:
-                try:
-                    ready = asyncio.run(tracker.list_ready(REDMINE_PROJECT))
-                    logger.info(
-                        "ticket discovery: %d ready  project=%s",
-                        len(ready),
-                        REDMINE_PROJECT,
-                    )
-                    for ticket in ready:
-                        state = _to_pipeline_state(ticket, REDMINE_PROJECT)
-                        config = {
-                            "configurable": {"thread_id": ticket["id"]},
-                        }
-                        pipeline.invoke(state, config)
-                except Exception:
-                    logger.exception("ticket discovery failed")
-                time.sleep(POLL_INTERVAL)
-        except KeyboardInterrupt:
-            logger.info("orchestrator shutting down")
+        await _poll_loop(tracker, pipeline)
 
 
-if __name__ == "__main__":
-    main()
+def main() -> None:
+    try:
+        asyncio.run(main_async())
+    except KeyboardInterrupt:
+        logger.info("orchestrator shutting down")
