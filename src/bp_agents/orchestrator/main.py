@@ -114,3 +114,7 @@ def main() -> None:
         asyncio.run(main_async())
     except KeyboardInterrupt:
         logger.info("orchestrator shutting down")
+
+
+if __name__ == "__main__":
+    main()
