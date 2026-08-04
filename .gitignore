@@ -8,3 +8,7 @@ dist/
 state.json
 .opencode/opencode-loop/
 .env
+
+.playwright-mcp/
+
+.scratch/orchestrator/outcomes/

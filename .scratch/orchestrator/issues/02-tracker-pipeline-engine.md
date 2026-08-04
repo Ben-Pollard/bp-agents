@@ -1,4 +1,4 @@
-Status: done
+Status: ready-for-agent
 
 # 02 — Tracker port + Pipeline engine skeleton
 

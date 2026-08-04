@@ -49,10 +49,13 @@ def main() -> None:
 
     try:
         while True:
-            ready = asyncio.run(tracker.list_ready(PLANE_PROJECT))
-            logger.info(
-                "ticket discovery: %d ready  project=%s", len(ready), PLANE_PROJECT
-            )
+            try:
+                ready = asyncio.run(tracker.list_ready(PLANE_PROJECT))
+                logger.info(
+                    "ticket discovery: %d ready  project=%s", len(ready), PLANE_PROJECT
+                )
+            except Exception:
+                logger.exception("ticket discovery failed")
             time.sleep(POLL_INTERVAL)
     except KeyboardInterrupt:
         logger.info("orchestrator shutting down")

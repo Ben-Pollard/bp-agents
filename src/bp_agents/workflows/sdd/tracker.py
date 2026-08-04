@@ -23,11 +23,12 @@ class PlaneTracker(Tracker):
                     "X-API-Key": api_key,
                     "Content-Type": "application/json",
                 },
+                follow_redirects=True,
             )
 
     async def list_ready(self, project: str) -> list[dict]:
         resp = await self._client.get(
-            f"/api/v1/workspaces/{self.workspace_slug}/projects/{project}/issues",
+            f"/api/v1/workspaces/{self.workspace_slug}/projects/{project}/issues/",
             params={"state_group": "backlog"},
         )
         resp.raise_for_status()
@@ -36,7 +37,7 @@ class PlaneTracker(Tracker):
 
     async def update_state(self, item_id: str, state: str, project: str) -> None:
         resp = await self._client.patch(
-            f"/api/v1/workspaces/{self.workspace_slug}/projects/{project}/issues/{item_id}",
+            f"/api/v1/workspaces/{self.workspace_slug}/projects/{project}/issues/{item_id}/",
             json={"state": state},
         )
         resp.raise_for_status()

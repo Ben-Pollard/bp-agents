@@ -1,4 +1,4 @@
-Status: in-progress
+Status: ready-for-agent
 
 # 03 — Sandbox adapter + Egress proxy
 
@@ -124,9 +124,9 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 
 ## Outcome
 
-Review loop exceeded 3 rounds (escalation). Implementation is in good shape — 60/60 unit tests pass, ruff clean. The code implements the `platform.sandbox` module with `DockerSandbox` (docker-py adapter, gVisor runsc with fallback, configurable proxies/network, DI for docker_client, dynamic port extraction), `EgressPolicy` (secure hostname+suffix matching, configurable allowlist, logged on startup), and `SandboxConfig`/`SandboxSession` dataclasses. Git blocking (AC-4) is handled at the image level (docstring + test). The last 3 review rounds found only minor code quality issues (extraction into helpers, private attribute access, broad exception handling) — all fixed. Remaining tension: no integration test for real Docker daemon (accepted trade-off), and review loop hit 3 rounds on code quality iterations.
+Implemented `platform.sandbox` module with DockerSandbox (docker-py adapter, gVisor runsc with fallback, configurable proxies/network/DI), EgressPolicy (hostname+suffix matching, configurable allowlist, logged on startup), and SandboxConfig/SandboxSession. 4 review rounds (3 code quality, 1 behavioural verification catch). 2 docker-py API bugs found and fixed by live verification (host_config kwarg, label filter format). All 8 ACs PASS, 60/60 tests pass, ruff clean.
 
 - Implement: `.scratch/orchestrator/outcomes/implement-outcome.json`
 - Review: `.scratch/orchestrator/outcomes/review-outcome.json`
-- Reduction: not yet dispatched
-- Verify: not yet dispatched
+- Reduction: `.scratch/orchestrator/outcomes/reduction-outcome.json`
+- Verify: `.scratch/orchestrator/outcomes/verify-outcome.json`
