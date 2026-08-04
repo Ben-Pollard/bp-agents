@@ -27,11 +27,13 @@ def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
     while time.time() - start < timeout:
         try:
             r = httpx.get(url, timeout=5)
-            logger.info("%s responded with status %s", name, r.status_code)
-            return
-        except httpx.ConnectError:
+            if r.status_code == 200:
+                logger.info("%s responded with status %s", name, r.status_code)
+                return
+            logger.debug("%s returned status %s, retrying...", name, r.status_code)
+        except httpx.HTTPError:
             logger.debug("%s not ready yet, retrying...", name)
-            time.sleep(1)
+        time.sleep(1)
     raise RuntimeError("%s did not become ready within %ds" % (name, timeout))
 
 

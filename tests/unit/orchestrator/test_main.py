@@ -33,7 +33,19 @@ class TestWaitForDependency:
 
             mock_get.assert_called_once_with("http://example.com/health", timeout=5)
 
-    def test_retries_then_succeeds(self) -> None:
+    def test_retries_on_non_200(self) -> None:
+        with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
+            mock_get.side_effect = [
+                mock.Mock(status_code=503),
+                mock.Mock(status_code=502),
+                mock.Mock(status_code=200),
+            ]
+
+            wait_for_dependency("http://example.com/health", "example", timeout=5)
+
+            assert mock_get.call_count == 3
+
+    def test_retries_on_connect_error(self) -> None:
         with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
             mock_get.side_effect = [
                 httpx.ConnectError("refused"),
@@ -44,6 +56,17 @@ class TestWaitForDependency:
             wait_for_dependency("http://example.com/health", "example", timeout=5)
 
             assert mock_get.call_count == 3
+
+    def test_retries_on_http_error(self) -> None:
+        with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
+            mock_get.side_effect = [
+                httpx.HTTPError("server error"),
+                mock.Mock(status_code=200),
+            ]
+
+            wait_for_dependency("http://example.com/health", "example", timeout=5)
+
+            assert mock_get.call_count == 2
 
     def test_timeout_raises(self) -> None:
         with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:

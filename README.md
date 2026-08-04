@@ -27,6 +27,20 @@ All services start via `docker compose up`.
 
 Issue tracker front-end. Create projects, tickets, and manage the SDD ticket lifecycle. Uses the `makeplane/plane-aio-commercial:stable` image (all-in-one; port 80 inside container, mapped to 8082 on host).
 
+#### First-time setup
+
+After starting Plane (`docker compose up`), create an admin user and API key:
+
+1. Open http://localhost:8082 in a browser.
+2. Complete the initial sign-up form to create the admin user.
+3. Navigate to **Settings → API Tokens** and generate an API key.
+4. Copy the API key to `.env` as `PLANE_API_KEY`.
+5. Create a workspace (e.g. `bp-agents`) and note the slug. Set `PLANE_WORKSPACE_SLUG` in `.env`.
+6. Create a project within the workspace and note its name. Set `PLANE_PROJECT` in `.env`.
+7. Create tickets with state group "Backlog" — the orchestrator polls for these as ready tickets.
+
+**Caveat**: The Plane REST API (`POST /issues/`) may return 404 for ticket creation on some versions. If creation fails, use the Plane web UI instead. GET and PATCH work reliably.
+
 ### Langfuse
 
 LLM tracing and evaluation platform. View agent session content at LLM-conversation level per stage dispatch. Requires ClickHouse (started automatically via `docker compose`).
