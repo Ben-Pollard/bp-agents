@@ -41,3 +41,4 @@ class TicketPipelineState(TypedDict):
     diff: str | None
     review_approved: bool | None
     verification_passed: bool | None
+    blocked_reason: str | None

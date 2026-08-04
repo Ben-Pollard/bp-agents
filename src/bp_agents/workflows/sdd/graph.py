@@ -51,6 +51,8 @@ ROUTE_MAP: dict[str, str] = {
 
 
 def route_ticket(state: TicketPipelineState) -> str:
+    if state.get("blocked_reason") and state["status"] != "blocked":
+        return "block"
     return ROUTE_MAP.get(state["status"], END)
 
 
@@ -77,11 +79,12 @@ def build_ticket_pipeline(
     builder.add_node("approve_review", _node("awaiting_verification"))
     builder.add_node("request_changes", _node("awaiting_revision"))
     builder.add_node("revise", _node("revising"))
-    builder.add_node("revise_complete", _node("awaiting_review"))
+    builder.add_node("revise_complete", _node("awaiting_verification"))
     builder.add_node("verify", _node("verifying"))
     builder.add_node("verification_pass", _node("awaiting_approval"))
     builder.add_node("verification_fail", _node("awaiting_revision"))
     builder.add_node("approve_final", _node("done"))
+    builder.add_node("block", _node("blocked"))
 
     builder.add_conditional_edges(START, route_ticket)
     builder.add_conditional_edges("implement", route_ticket)
@@ -95,6 +98,7 @@ def build_ticket_pipeline(
     builder.add_conditional_edges("verification_pass", route_ticket)
     builder.add_conditional_edges("verification_fail", route_ticket)
     builder.add_conditional_edges("approve_final", route_ticket)
+    builder.add_conditional_edges("block", route_ticket)
 
     return builder.compile(checkpointer=checkpointer)
 
@@ -121,6 +125,7 @@ def build_feature_pipeline(
                     "diff": None,
                     "review_approved": None,
                     "verification_passed": None,
+                    "blocked_reason": None,
                 }
             else:
                 ticket_state = state["ticket_states"][tid]
