@@ -60,24 +60,24 @@ def test_pipeline_polls_tracker_and_dispatches_tickets(
 
     from langgraph.checkpoint.sqlite import SqliteSaver
 
-    from bp_agents.orchestrator.main import PLANE_PROJECT
+    from bp_agents.orchestrator.main import REDMINE_PROJECT
 
     with SqliteSaver.from_conn_string(db_path) as checkpointer:
         pipeline = build_ticket_pipeline(checkpointer=checkpointer)
 
         import asyncio
 
-        ready = asyncio.run(tracker.list_ready(PLANE_PROJECT))
+        ready = asyncio.run(tracker.list_ready(REDMINE_PROJECT))
 
         logger = logging.getLogger("bp_agents.orchestrator.main")
         logger.info(
             "ticket discovery: %d ready  project=%s",
             len(ready),
-            PLANE_PROJECT,
+            REDMINE_PROJECT,
         )
 
         for ticket in ready:
-            state = _to_pipeline_state(ticket, PLANE_PROJECT)
+            state = _to_pipeline_state(ticket, REDMINE_PROJECT)
             config = {"configurable": {"thread_id": ticket.id}}
             pipeline.invoke(state, config)
 
@@ -89,7 +89,7 @@ def test_pipeline_polls_tracker_and_dispatches_tickets(
     transition_msgs = [
         m for m in records if "ticket TICK-1:" in m or "ticket TICK-2:" in m
     ]
-    assert any("implementing ->" in m for m in transition_msgs)
+    assert any("ready ->" in m or "implementing ->" in m for m in transition_msgs)
 
     with SqliteSaver.from_conn_string(db_path) as checkpointer:
         state1 = checkpointer.get({"configurable": {"thread_id": "TICK-1"}})

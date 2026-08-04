@@ -23,6 +23,7 @@ class TicketPipelineState(TypedDict):
     ticket_id: str
     project: str
     status: Literal[
+        "ready",
         "implementing",
         "awaiting_review",
         "reviewing",

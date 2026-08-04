@@ -25,6 +25,7 @@ def _ts(status: str) -> TicketPipelineState:
 
 
 def test_route_ticket_returns_next_node() -> None:
+    assert route_ticket(_ts("ready")) == "implement"
     assert route_ticket(_ts("implementing")) == "implement"
     assert route_ticket(_ts("awaiting_review")) == "review"
     assert route_ticket(_ts("awaiting_revision")) == "revise"
@@ -33,3 +34,10 @@ def test_route_ticket_returns_next_node() -> None:
     assert route_ticket(_ts("awaiting_approval")) == "approve_final"
     assert route_ticket(_ts("done")) == END
     assert route_ticket(_ts("blocked")) == END
+
+
+def test_pipeline_advances_ready_to_implementing() -> None:
+    app = build_ticket_pipeline()
+    initial = _ts("ready")
+    result = app.invoke(initial, {"configurable": {"thread_id": "TICK-1"}})
+    assert result["status"] != "ready"

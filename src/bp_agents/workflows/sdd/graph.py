@@ -9,6 +9,7 @@ from bp_agents.workflows.sdd.state import TicketPipelineState
 logger = logging.getLogger(__name__)
 
 NEXT_STATE: dict[str, str] = {
+    "ready": "implementing",
     "implementing": "awaiting_review",
     "awaiting_review": "reviewing",
     "reviewing": "__DECIDE_REVIEW__",
@@ -48,6 +49,7 @@ def _node(target: str):
 
 
 ROUTE_MAP: dict[str, str] = {
+    "ready": "implement",
     "implementing": "implement",
     "awaiting_review": "review",
     "awaiting_revision": "revise",

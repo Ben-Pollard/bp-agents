@@ -1,4 +1,4 @@
-Status: ready-for-human
+Status: in-progress
 
 # 02 — Tracker port + Pipeline engine skeleton
 

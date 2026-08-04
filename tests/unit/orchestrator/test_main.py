@@ -119,6 +119,6 @@ class TestMain:
             mock_time.side_effect = [0, 120]
 
             with pytest.raises(
-                RuntimeError, match="Plane did not become ready within 120s"
+                RuntimeError, match="Redmine did not become ready within 120s"
             ):
                 main(tracker=FakeTracker())

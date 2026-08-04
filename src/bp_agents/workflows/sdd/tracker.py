@@ -5,90 +5,103 @@ import httpx
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.contracts import Ticket
 
+# Default Redmine status ID to SDD TicketState mapping
+# Redmine defaults: 1=New, 2=In Progress, 3=Resolved, 4=Feedback, 5=Closed, 6=Rejected
+DEFAULT_STATUS_MAP: dict[str, int] = {
+    "ready": 1,
+    "implementing": 2,
+    "awaiting_review": 3,
+    "reviewing": 4,
+    "awaiting_revision": 3,
+    "revising": 2,
+    "awaiting_verification": 3,
+    "verifying": 4,
+    "awaiting_approval": 3,
+    "blocked": 6,
+    "done": 5,
+}
 
-def _parse_ticket(raw: dict, project: str) -> Ticket:
-    labels = raw.get("labels") or []
-    if isinstance(labels, list):
-        label_names: list[str] = []
-        for lbl in labels:
-            if isinstance(lbl, dict):
-                label_names.append(lbl.get("name", str(lbl)))
-            else:
-                label_names.append(str(lbl))
+READY_STATUS_ID = 1
+
+
+def _parse_issue(raw: dict, project: str) -> Ticket:
+    status = raw.get("status", {})
+    if isinstance(status, dict):
+        status_name = str(status.get("name", ""))
     else:
-        label_names = [str(labels)] if labels else []
-    state = raw.get("state")
-    if isinstance(state, dict):
-        state_str = str(state.get("name", ""))
-    else:
-        state_str = str(state or "")
-    created = raw.get("created_at")
-    updated = raw.get("updated_at")
+        status_name = str(status or "")
+    created = raw.get("created_on")
+    updated = raw.get("updated_on")
     return Ticket(
         id=str(raw["id"]),
-        name=str(raw.get("name", "")),
-        description=str(raw.get("description_html", "") or ""),
-        state=state_str,
+        name=str(raw.get("subject", "")),
+        description=str(raw.get("description", "") or ""),
+        state=status_name,
         project=project,
-        labels=label_names,
-        created_at=datetime.fromisoformat(created)
+        labels=[],
+        created_at=datetime.fromisoformat(created.replace("Z", "+00:00"))
         if created and isinstance(created, str)
         else None,
-        updated_at=datetime.fromisoformat(updated)
+        updated_at=datetime.fromisoformat(updated.replace("Z", "+00:00"))
         if updated and isinstance(updated, str)
         else None,
     )
 
 
-class PlaneTracker(Tracker):
+class RedmineTracker(Tracker):
     def __init__(
         self,
         base_url: str,
         api_key: str,
-        workspace_slug: str,
         client: httpx.AsyncClient | None = None,
+        status_map: dict[str, int] | None = None,
     ) -> None:
         self.base_url = base_url
         self.api_key = api_key
-        self.workspace_slug = workspace_slug
+        self._status_map = status_map or DEFAULT_STATUS_MAP
         if client is not None:
             self._client = client
         else:
             self._client = httpx.AsyncClient(
                 base_url=base_url,
                 headers={
-                    "X-API-Key": api_key,
+                    "X-Redmine-API-Key": api_key,
                     "Content-Type": "application/json",
                 },
-                follow_redirects=True,
             )
 
     async def list_ready(self, project: str) -> list[Ticket]:
         resp = await self._client.get(
-            f"/api/v1/workspaces/{self.workspace_slug}/projects/{project}/issues/",
-            params={"state_group": "backlog"},
+            "/issues.json",
+            params={
+                "project_id": project,
+                "status_id": str(READY_STATUS_ID),
+            },
         )
         resp.raise_for_status()
         data = resp.json()
-        return [_parse_ticket(item, project) for item in data.get("results", [])]
+        return [_parse_issue(item, project) for item in data.get("issues", [])]
 
     async def get_item(self, item_id: str, project: str) -> Ticket:
-        resp = await self._client.get(
-            f"/api/v1/workspaces/{self.workspace_slug}/projects/{project}/issues/{item_id}/",
-        )
+        resp = await self._client.get(f"/issues/{item_id}.json")
         resp.raise_for_status()
-        return _parse_ticket(resp.json(), project)
+        data = resp.json()
+        return _parse_issue(data.get("issue", {}), project)
 
     async def update_state(self, item_id: str, state: str, project: str) -> None:
-        resp = await self._client.patch(
-            f"/api/v1/workspaces/{self.workspace_slug}/projects/{project}/issues/{item_id}/",
-            json={"state": state},
+        status_id = self._status_map.get(state)
+        if status_id is None:
+            msg = f"Unknown SDD state: {state}"
+            raise ValueError(msg)
+        resp = await self._client.put(
+            f"/issues/{item_id}.json",
+            json={"issue": {"status_id": status_id}},
         )
         resp.raise_for_status()
 
     async def add_comment(self, item_id: str, body: str, project: str) -> None:
-        resp = await self._client.post(
-            f"/api/v1/workspaces/{self.workspace_slug}/projects/{project}/issues/{item_id}/comments/",
-            json={"comment_body": body},
+        resp = await self._client.put(
+            f"/issues/{item_id}.json",
+            json={"issue": {"notes": body}},
         )
         resp.raise_for_status()
