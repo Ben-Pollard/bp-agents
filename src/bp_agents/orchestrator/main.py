@@ -5,6 +5,7 @@ import time
 
 import httpx
 
+from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.tracker import PlaneTracker
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
     raise RuntimeError("%s did not become ready within %ds" % (name, timeout))
 
 
-def main() -> None:
+def main(tracker: Tracker | None = None) -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
@@ -39,11 +40,12 @@ def main() -> None:
     wait_for_dependency(f"{PLANE_BASE_URL}/api/v1", "Plane")
     wait_for_dependency(f"{EGRESS_PROXY_URL}/", "egress-proxy")
 
-    tracker = PlaneTracker(
-        base_url=PLANE_BASE_URL,
-        api_key=PLANE_API_KEY,
-        workspace_slug=PLANE_WORKSPACE_SLUG,
-    )
+    if tracker is None:
+        tracker = PlaneTracker(
+            base_url=PLANE_BASE_URL,
+            api_key=PLANE_API_KEY,
+            workspace_slug=PLANE_WORKSPACE_SLUG,
+        )
 
     logger.info("orchestrator ready")
 

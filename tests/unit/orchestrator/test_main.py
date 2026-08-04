@@ -3,7 +3,23 @@ from unittest import mock
 import httpx
 import pytest
 
-from bp_agents.orchestrator.main import POLL_INTERVAL, wait_for_dependency
+from bp_agents.orchestrator.main import POLL_INTERVAL, main, wait_for_dependency
+from bp_agents.platform.tracker import Tracker
+from bp_agents.workflows.sdd.contracts import Ticket
+
+
+class FakeTracker(Tracker):
+    async def list_ready(self, project: str) -> list[Ticket]:
+        return []
+
+    async def get_item(self, item_id: str, project: str) -> Ticket:
+        return Ticket(id=item_id, name="", description="", state="", project=project)
+
+    async def update_state(self, item_id: str, state: str, project: str) -> None:
+        pass
+
+    async def add_comment(self, item_id: str, body: str, project: str) -> None:
+        pass
 
 
 class TestWaitForDependency:
@@ -57,20 +73,14 @@ class TestMain:
             mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
             mock.patch("bp_agents.orchestrator.main.time.sleep") as mock_sleep,
             mock.patch("bp_agents.orchestrator.main.time.time") as mock_time,
-            mock.patch("bp_agents.orchestrator.main.PlaneTracker") as mock_tracker_cls,
         ):
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_get.return_value = mock_response
             mock_time.side_effect = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
             mock_sleep.side_effect = KeyboardInterrupt
-            mock_tracker = mock.AsyncMock()
-            mock_tracker.list_ready = mock.AsyncMock(return_value=[])
-            mock_tracker_cls.return_value = mock_tracker
 
-            from bp_agents.orchestrator.main import main
-
-            main()
+            main(tracker=FakeTracker())
 
             records = [r.message for r in caplog.records]
             assert "orchestrator ready" in records
@@ -85,9 +95,7 @@ class TestMain:
             mock_get.side_effect = httpx.ConnectError("always refused")
             mock_time.side_effect = [0, 120]
 
-            from bp_agents.orchestrator.main import main
-
             with pytest.raises(
                 RuntimeError, match="Plane did not become ready within 120s"
             ):
-                main()
+                main(tracker=FakeTracker())

@@ -48,7 +48,7 @@ async def test_list_ready_returns_issues() -> None:
     results = await tracker.list_ready("project-1")
 
     assert len(results) == 1
-    assert results[0]["id"] == "issue-1"
+    assert results[0].id == "issue-1"
 
 
 @pytest.mark.asyncio
