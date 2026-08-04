@@ -3,7 +3,7 @@ from datetime import datetime
 import httpx
 
 from bp_agents.platform.tracker import Tracker
-from bp_agents.workflows.sdd.contracts import Ticket
+from bp_agents.workflows.sdd.contracts import Ticket, TicketState
 
 # Default Redmine status ID to SDD TicketState mapping
 # Redmine defaults: 1=New, 2=In Progress, 3=Resolved, 4=Feedback, 5=Closed, 6=Rejected
@@ -32,11 +32,16 @@ def _parse_issue(raw: dict, project: str) -> Ticket:
         status_name = str(status or "")
     created = raw.get("created_on")
     updated = raw.get("updated_on")
+    raw_description = raw.get("description")
+    try:
+        ticket_state = TicketState(status_name.lower())
+    except ValueError:
+        ticket_state = TicketState.READY
     return Ticket(
         id=str(raw["id"]),
         name=str(raw.get("subject", "")),
-        description=str(raw.get("description", "") or ""),
-        state=status_name,
+        description=str(raw_description) if raw_description is not None else None,
+        state=ticket_state,
         project=project,
         labels=[],
         created_at=datetime.fromisoformat(created.replace("Z", "+00:00"))

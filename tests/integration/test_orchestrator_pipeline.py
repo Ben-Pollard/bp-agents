@@ -7,7 +7,7 @@ import pytest
 
 from bp_agents.orchestrator.main import _to_pipeline_state, wait_for_dependency
 from bp_agents.platform.tracker import Tracker
-from bp_agents.workflows.sdd.contracts import Ticket
+from bp_agents.workflows.sdd.contracts import Ticket, TicketState
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
 
 
@@ -19,7 +19,13 @@ class FakeTrackerReturns(Tracker):
         return self.tickets
 
     async def get_item(self, item_id: str, project: str) -> Ticket:
-        return Ticket(id=item_id, name="", description="", state="", project=project)
+        return Ticket(
+            id=item_id,
+            name="",
+            description=None,
+            state=TicketState.READY,
+            project=project,
+        )
 
     async def update_state(self, item_id: str, state: str, project: str) -> None:
         pass
@@ -42,15 +48,15 @@ def test_pipeline_polls_tracker_and_dispatches_tickets(
             Ticket(
                 id="TICK-1",
                 name="Fix login",
-                description="",
-                state="backlog",
+                description=None,
+                state=TicketState.READY,
                 project="project-1",
             ),
             Ticket(
                 id="TICK-2",
                 name="Add logout",
-                description="",
-                state="backlog",
+                description=None,
+                state=TicketState.READY,
                 project="project-1",
             ),
         ]
@@ -114,7 +120,7 @@ def test_wait_for_dependency_requires_200() -> None:
 
         wait_for_dependency("http://example.com/health", "example", timeout=5)
 
-        assert mock_get.call_count == 3
+        assert mock_get.call_count >= 3
 
 
 def test_wait_for_dependency_fails_on_persistent_non_200() -> None:

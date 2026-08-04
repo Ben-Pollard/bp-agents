@@ -14,7 +14,7 @@ class SDDFeatureState(TypedDict):
     branch_name: str | None
     acs: list[dict]
     tickets: list[Ticket]
-    ticket_states: dict[str, str]
+    ticket_states: dict[str, "TicketPipelineState"]
     current_stage: str | None
     blocked_reason: str | None
 
@@ -39,3 +39,5 @@ class TicketPipelineState(TypedDict):
     review_output: ReviewOutput | None
     revision_output: RevisionOutput | None
     diff: str | None
+    review_approved: bool | None
+    verification_passed: bool | None

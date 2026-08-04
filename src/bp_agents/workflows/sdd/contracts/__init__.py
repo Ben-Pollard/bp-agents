@@ -8,8 +8,8 @@ from typing import Literal, TypedDict
 class Ticket:
     id: str
     name: str
-    description: str
-    state: str
+    description: str | None
+    state: "TicketState"
     project: str
     labels: list[str] = field(default_factory=list)
     created_at: datetime | None = None

@@ -45,6 +45,8 @@ def _to_pipeline_state(ticket, project: str) -> TicketPipelineState:
         "review_output": None,
         "revision_output": None,
         "diff": None,
+        "review_approved": None,
+        "verification_passed": None,
     }
 
 

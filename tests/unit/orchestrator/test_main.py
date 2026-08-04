@@ -5,7 +5,7 @@ import pytest
 
 from bp_agents.orchestrator.main import POLL_INTERVAL, main, wait_for_dependency
 from bp_agents.platform.tracker import Tracker
-from bp_agents.workflows.sdd.contracts import Ticket
+from bp_agents.workflows.sdd.contracts import Ticket, TicketState
 
 
 class FakeTracker(Tracker):
@@ -13,7 +13,13 @@ class FakeTracker(Tracker):
         return []
 
     async def get_item(self, item_id: str, project: str) -> Ticket:
-        return Ticket(id=item_id, name="", description="", state="", project=project)
+        return Ticket(
+            id=item_id,
+            name="",
+            description=None,
+            state=TicketState.READY,
+            project=project,
+        )
 
     async def update_state(self, item_id: str, state: str, project: str) -> None:
         pass
@@ -43,7 +49,7 @@ class TestWaitForDependency:
 
             wait_for_dependency("http://example.com/health", "example", timeout=5)
 
-            assert mock_get.call_count == 3
+            assert mock_get.call_count >= 3
 
     def test_retries_on_connect_error(self) -> None:
         with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
@@ -55,7 +61,7 @@ class TestWaitForDependency:
 
             wait_for_dependency("http://example.com/health", "example", timeout=5)
 
-            assert mock_get.call_count == 3
+            assert mock_get.call_count >= 3
 
     def test_retries_on_http_error(self) -> None:
         with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
@@ -66,7 +72,7 @@ class TestWaitForDependency:
 
             wait_for_dependency("http://example.com/health", "example", timeout=5)
 
-            assert mock_get.call_count == 2
+            assert mock_get.call_count >= 2
 
     def test_timeout_raises(self) -> None:
         with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:

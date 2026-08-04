@@ -23,6 +23,8 @@ def test_pipeline_with_sqlite_persistence() -> None:
                 "review_output": None,
                 "revision_output": None,
                 "diff": None,
+                "review_approved": None,
+                "verification_passed": None,
             }
 
             config = {"configurable": {"thread_id": "TICK-1"}}
@@ -55,6 +57,8 @@ def test_multiple_tickets_no_interference() -> None:
             "review_output": None,
             "revision_output": None,
             "diff": None,
+            "review_approved": None,
+            "verification_passed": None,
         }
 
         ticket2: TicketPipelineState = {
@@ -65,6 +69,8 @@ def test_multiple_tickets_no_interference() -> None:
             "review_output": None,
             "revision_output": None,
             "diff": None,
+            "review_approved": None,
+            "verification_passed": None,
         }
 
         r1 = app.invoke(ticket1, {"configurable": {"thread_id": "TICK-1"}})
