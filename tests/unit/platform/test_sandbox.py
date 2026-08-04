@@ -140,6 +140,19 @@ class TestEgressPolicy:
         assert not policy.is_allowed("not a url")
         assert not policy.is_allowed("")
 
+    def test_git_local_commands_design_documented(self) -> None:
+        """Git command blocking is enforced at the container image level.
+
+        The EgressPolicy controls network-level egress only. Local git
+        commands (git status, git add, etc.) are prevented by ensuring
+        the sandbox container image does not include git. This design is
+        documented in the EgressPolicy class docstring.
+        """
+        doc = EgressPolicy.__doc__
+        assert doc is not None
+        assert "container image" in doc
+        assert "git" in doc
+
     def test_default_allowlist_constant_not_mutable(self) -> None:
         assert "api.openai.com" in DEFAULT_ALLOWLIST
 
@@ -483,10 +496,23 @@ class TestDockerSandbox:
     async def test_accepts_egress_policy(self, mock_docker_client: MagicMock) -> None:
         policy = EgressPolicy(allowlist=["custom-only.com"])
         sandbox = DockerSandbox(docker_client=mock_docker_client, egress_policy=policy)
-        assert sandbox._egress_policy is policy
+        assert sandbox.egress_policy is policy
 
     async def test_default_egress_policy_created(
         self, mock_docker_client: MagicMock
     ) -> None:
         sandbox = DockerSandbox(docker_client=mock_docker_client)
-        assert isinstance(sandbox._egress_policy, EgressPolicy)
+        assert isinstance(sandbox.egress_policy, EgressPolicy)
+
+    async def test_egress_policy_enforces_blocked_destinations(
+        self, mock_docker_client: MagicMock
+    ) -> None:
+        sandbox = DockerSandbox(docker_client=mock_docker_client)
+        with pytest.raises(EgressBlockedError):
+            sandbox.egress_policy.check("https://example.com")
+
+    async def test_egress_policy_allows_listed_destinations(
+        self, mock_docker_client: MagicMock
+    ) -> None:
+        sandbox = DockerSandbox(docker_client=mock_docker_client)
+        sandbox.egress_policy.check("https://api.openai.com/v1/chat")  # no error

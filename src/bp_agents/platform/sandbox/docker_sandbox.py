@@ -28,18 +28,43 @@ class DockerSandbox(Sandbox):
         self._egress_policy = egress_policy or EgressPolicy()
         self._egress_policy.log_allowlist()
 
+    @property
+    def egress_policy(self) -> EgressPolicy:
+        return self._egress_policy
+
     async def create(self, config: SandboxConfig) -> SandboxSession:
+        env = self._build_env(config)
+        labels = self._build_labels(config)
+        host_config = self._build_host_config(config)
+        container = await self._create_and_start_container(
+            config, env, host_config, labels
+        )
+        port = self._extract_port(container)
+        base_url = f"http://localhost:{port}"
+
+        return SandboxSession(
+            container_id=container.id,
+            port=port,
+            base_url=base_url,
+        )
+
+    @staticmethod
+    def _build_env(config: SandboxConfig) -> dict[str, str]:
         env = dict(config.env)
         env.setdefault("HTTP_PROXY", config.http_proxy)
         env.setdefault("HTTPS_PROXY", config.https_proxy)
         env.setdefault("NO_PROXY", config.no_proxy)
+        return env
 
-        labels = {
+    @staticmethod
+    def _build_labels(config: SandboxConfig) -> dict[str, str]:
+        return {
             _label("image"): config.image,
             _label("created"): datetime.now(timezone.utc).isoformat(),
         }
 
-        host_config = self._client.api.create_host_config(
+    def _build_host_config(self, config: SandboxConfig) -> dict:
+        return self._client.api.create_host_config(
             binds=[
                 f"{config.workspace_path}:/data/workspace:ro",
                 f"{config.skills_path}:/data/skills:ro",
@@ -50,6 +75,13 @@ class DockerSandbox(Sandbox):
             port_bindings={8080: None},
         )
 
+    async def _create_and_start_container(
+        self,
+        config: SandboxConfig,
+        env: dict[str, str],
+        host_config: dict,
+        labels: dict[str, str],
+    ) -> Container:
         create_kwargs: dict = dict(
             image=config.image,
             command=["sleep", str(config.timeout_seconds)],
@@ -75,29 +107,22 @@ class DockerSandbox(Sandbox):
             else:
                 raise
         container.start()
+        return container
 
-        # Inspect to find exposed port
-        container.reload()
-        host_port = None
+    @staticmethod
+    def _extract_port(container: Container) -> int:
         try:
+            container.reload()
             ports_dict = (
                 container.attrs.get("NetworkSettings", {}).get("Ports", {}) or {}
             )
             if isinstance(ports_dict, dict):
                 for bindings in ports_dict.values():
                     if isinstance(bindings, list) and bindings:
-                        host_port = int(bindings[0].get("HostPort", 8080))
-                        break
-        except Exception:
+                        return int(bindings[0].get("HostPort", 8080))
+        except (KeyError, TypeError, IndexError, AttributeError):
             pass
-        port = host_port or 8080
-        base_url = f"http://localhost:{port}"
-
-        return SandboxSession(
-            container_id=container.id,
-            port=port,
-            base_url=base_url,
-        )
+        return 8080
 
     async def is_running(self, container_id: str) -> bool:
         try:

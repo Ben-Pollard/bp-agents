@@ -1,49 +1,48 @@
 {
-  "spec_compliance": true,
+  "spec_compliance": false,
   "code_quality": {
-    "deep-modules.md": true,
+    "deep-modules.md": false,
     "interface-design.md": true,
-    "refactoring.md": true,
-    "declarative-over-procedural.md": true,
+    "refactoring.md": false,
+    "declarative-over-procedural.md": false,
     "SOLID": true,
     "DRY": true,
     "YAGNI": true
   },
   "test_quality": {
     "deep-modules.md": true,
-    "interface-design.md": true,
+    "interface-design.md": false,
     "mocking.md": true
   },
-  "operational": false,
+  "operational": true,
   "violations": [
     {
-      "principle": "Security: URL substring matching bypasses egress policy",
-      "file": "src/bp_agents/platform/sandbox/egress.py:27",
-      "issue": "EgressPolicy.is_allowed uses `any(allowed in destination for allowed in self.allowlist)` which is vulnerable to subdomain bypass. A domain like `evil-pypi.org.malicious.com` would match the `pypi.org` allowlist entry because `pypi.org` is a substring of the malicious domain. Must parse URL hostname and match against suffix (e.g. `urlparse(url).hostname` + `endswith('.pypi.org')` or exact match). This is a security-critical bypass of the egress policy."
+      "principle": "Spec compliance: AC 4 — Git commands",
+      "file": "src/bp_agents/platform/sandbox/egress.py:30",
+      "issue": "AC 4 says 'Git commands (git status, git add, etc.) fail inside sandbox with a clear error'. These are LOCAL commands — they don't need network. The implementation only blocks remote git URLs (github.com) via EgressPolicy. git status and git add would succeed if git is installed in the container. This is a spec compliance gap, not a testing gap. The test test_git_remotes_are_blocked only tests remote URL blocking, not local git commands."
     },
     {
-      "principle": "Hardcoded network name not configurable",
-      "file": "src/bp_agents/platform/sandbox/docker_sandbox.py:45",
-      "issue": "network_mode='bp_agents' is hardcoded in create(). If the Docker network differs across environments, this will fail. Should be configurable via SandboxConfig (analogous to how proxy vars were made configurable in the previous review fix). Regression — same class of issue as the original hardcoded proxy vars."
+      "principle": "Deep module: create() too long",
+      "file": "src/bp_agents/platform/sandbox/docker_sandbox.py:31",
+      "issue": "DockerSandbox.create() is 70 lines bundling env setup, host config, container creation with fallback, and port extraction. Per deep-modules.md, implementation complexity should be hidden behind a small interface but the method itself is a single procedural block. Extract env setup, host config, and port extraction into private helpers."
     },
     {
-      "principle": "Port is hardcoded, never extracted from container",
-      "file": "src/bp_agents/platform/sandbox/docker_sandbox.py:75",
-      "issue": "port = 8080 is hardcoded and never read from the container's port bindings. container.reload() is called but the result is not inspected. The port should be derived from the host config port bindings or the container's network settings."
+      "principle": "Private attribute access in tests",
+      "file": "tests/unit/platform/test_sandbox.py:486",
+      "issue": "test_accepts_egress_policy and test_default_egress_policy_created access sandbox._egress_policy (private attribute). Per tests.md, tests should verify through the public interface only. Add a public property or verify behavior indirectly (e.g., create a sandbox with a custom policy and check that blocked destinations are enforced)."
     },
     {
-      "principle": "EgressPolicy is never wired into sandbox",
-      "file": "src/bp_agents/platform/sandbox/egress.py:21",
-      "issue": "EgressPolicy is a standalone module not instantiated or used by DockerSandbox. The AC says 'blocked egress logged to stdout' — this logging happens in EgressPolicy.check() but nothing calls it. The sandbox only sets proxy env vars and delegates enforcement entirely to the external proxy. If the proxy is not deployed, egress is unrestricted. Either integrate EgressPolicy into the sandbox or document that it's the proxy's responsibility."
+      "principle": "Broad exception catch in port extraction",
+      "file": "src/bp_agents/platform/sandbox/docker_sandbox.py:91",
+      "issue": "except Exception: pass silently swallows all errors during port extraction, falling back to 8080. If a real bug occurs (e.g., KeyError from a different issue), it would be masked. Should catch specific exceptions (KeyError, TypeError, IndexError) or remove the try/except and let the caller handle failures."
     }
   ],
   "review_notes": [
-    "All 28 unit tests pass",
-    "Previous review issues 1-4 are all addressed: runsc fallback, dependency injection for docker_client, configurable proxy vars, testable code design",
-    "Mocking is at the correct boundary (docker.DockerClient is an external SDK, not an internal collaborator)",
-    "EgressPolicy coverage is thorough (9 tests covering all methods, edge cases, logging, and custom allowlists)",
-    "DockerSandbox tests cover create, is_running, destroy, list_containers, env construction, runtime selection, fallback, binds/resources, and labels",
-    "No integration test exists for real Docker daemon; the previous review accepted this trade-off"
+    "All 40 unit tests pass, zero lint issues",
+    "All 4 issues from second review are fixed: substring bypass (hostname parse + suffix), configurable network, dynamic port extraction, EgressPolicy wired into DockerSandbox",
+    "AC 4 gap is the only remaining spec compliance issue — local git commands not blocked",
+    "create() method would benefit from extraction into smaller helpers (3 distinct concerns visible)",
+    "Tests access private attribute _egress_policy — breaks on rename/refactor"
   ],
   "action": "changes_requested"
 }

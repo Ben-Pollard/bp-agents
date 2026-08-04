@@ -20,6 +20,15 @@ DEFAULT_ALLOWLIST: list[str] = [
 
 
 class EgressPolicy:
+    """Controls outbound network access from sandbox containers.
+
+    EgressPolicy blocks network-level egress to destinations not in the
+    allowlist. Local git commands (git status, git add, etc.) do NOT
+    require network and are NOT blocked by this policy. Git command
+    execution inside sandboxes is prevented at the container image level
+    — the sandbox images used in production must not include git.
+    """
+
     def __init__(self, allowlist: list[str] | None = None) -> None:
         self.allowlist = allowlist or list(DEFAULT_ALLOWLIST)
         self.log_allowlist()

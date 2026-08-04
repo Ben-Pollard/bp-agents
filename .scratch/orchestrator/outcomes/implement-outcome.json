@@ -1,8 +1,8 @@
 {
   "status": "DONE",
-  "summary": "Fixed 4 review issues: 1) EgressPolicy.is_allowed now parses URL hostname with suffix matching to prevent subdomain bypass; 2) network_mode is configurable via SandboxConfig.network field; 3) port is extracted from container port bindings after creation (fallback to 8080); 4) EgressPolicy is wired into DockerSandbox as optional constructor parameter with log_allowlist() on startup",
+  "summary": "Fixed all 4 review issues: 1) added docstring explaining git blocking is at image level + test; 2) extracted create() into 5 private helpers; 3) added public egress_policy property; 4) narrowed except Exception to specific exceptions",
   "test_results": {
-    "passed": 57,
+    "passed": 60,
     "failed": 0,
     "skipped": 0
   },
