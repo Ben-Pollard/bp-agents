@@ -1,5 +1,5 @@
 {
-  "spec_compliance": true,
+  "spec_compliance": false,
   "code_quality": {
     "deep-modules": true,
     "interface-design": true,
@@ -7,29 +7,43 @@
     "declarative-over-procedural": true,
     "SOLID": true,
     "DRY": true,
-    "YAGNI": false
+    "YAGNI": true
   },
   "test_quality": {
     "deep-modules": true,
     "interface-design": true,
-    "mocking": true
+    "mocking": false
   },
-  "operational": true,
+  "operational": false,
   "violations": [
     {
-      "principle": "YAGNI",
-      "file": "src/bp_agents/workflows/sdd/tracker.py:11",
-      "issue": "Ticket dataclass defined but never instantiated in production code. Only used in test. Adds maintenance surface without current value."
+      "principle": "Spec Compliance",
+      "file": "src/bp_agents/platform/sandbox/docker_sandbox.py:20",
+      "issue": "Missing fallback to hardened plain Docker when gVisor unavailable. AC #8 requires: 'Fallback to hardened plain Docker works if gVisor unavailable.' No try/except exists around runtime='runsc' — container creation will fail with no fallback path."
+    },
+    {
+      "principle": "Spec Compliance — Integration Test Gap",
+      "file": "tests/unit/platform/test_sandbox.py:1",
+      "issue": "No integration test for real Docker + egress proxy. Issue calls for 'Sandbox can reach PyPI' and 'Sandbox cannot reach arbitrary internet' — these require a real container. Unit tests mock docker-py entirely, so blocked-egress-logged-to-stdout behavior is never exercised against a live proxy."
+    },
+    {
+      "principle": "Mocking at internal seam",
+      "file": "tests/unit/platform/test_sandbox.py:127",
+      "issue": "Tests mock `docker.DockerClient` (an internal collaborator) instead of injecting a sandbox interface. Tests will break on refactor. Per mocking.md: 'Don't mock your own classes/modules' and 'Don't mock internal collaborators'. The DockerSandbox should accept an optional client so tests inject a real mock or test double at the boundary."
+    },
+    {
+      "principle": "Filter injection of env vars unclear",
+      "file": "src/bp_agents/platform/sandbox/docker_sandbox.py:25",
+      "issue": "HTTP_PROXY/HTTPS_PROXY env vars hardcoded in create(). If egress-proxy host changes, proxy URLs must be changed in code. Should be configurable via SandboxConfig or a separate network config."
     }
   ],
   "review_notes": [
-    "All 33 tests pass, linting clean",
-    "All 7 acceptance criteria met",
-    "All 7 previous violations resolved",
-    "Minor YAGNI: Ticket dataclass is dead code in production",
-    "Tests mock at system boundary (httpx.MockTransport) per mocking.md guidelines",
-    "NEXT_STATE and ROUTE_MAP dicts follow declarative-over-procedural principle",
-    "Tracker ABC with 4 methods follows deep-modules principle"
+    "25/25 unit tests pass, ruff linting clean",
+    "AC #1-#7 covered by unit tests or are egress-policy behavioral tests",
+    "AC #8 (fallback to hardened Docker) is unimplemented — critical gap",
+    "No integration test for live Docker container behavior (AC #2, #3 need real container)",
+    "DockerSandbox tests mock docker-py at internal seam, not at system boundary",
+    "Proxy URLs hardcoded rather than configurable"
   ],
-  "action": "approved"
+  "action": "changes_requested"
 }

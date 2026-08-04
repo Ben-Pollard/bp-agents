@@ -17,14 +17,18 @@ def _label(key: str) -> str:
 
 
 class DockerSandbox(Sandbox):
-    def __init__(self, docker_url: str = "unix://var/run/docker.sock"):
-        self._client = docker.DockerClient(base_url=docker_url)
+    def __init__(
+        self,
+        docker_url: str = "unix://var/run/docker.sock",
+        docker_client: docker.DockerClient | None = None,
+    ):
+        self._client = docker_client or docker.DockerClient(base_url=docker_url)
 
     async def create(self, config: SandboxConfig) -> SandboxSession:
         env = dict(config.env)
-        env.setdefault("HTTP_PROXY", "http://egress-proxy:8080")
-        env.setdefault("HTTPS_PROXY", "http://egress-proxy:8080")
-        env.setdefault("NO_PROXY", "localhost,127.0.0.1")
+        env.setdefault("HTTP_PROXY", config.http_proxy)
+        env.setdefault("HTTPS_PROXY", config.https_proxy)
+        env.setdefault("NO_PROXY", config.no_proxy)
 
         labels = {
             _label("image"): config.image,
@@ -53,7 +57,17 @@ class DockerSandbox(Sandbox):
         if config.runtime == "runsc":
             create_kwargs["runtime"] = "runsc"
 
-        container: Container = self._client.containers.create(**create_kwargs)
+        try:
+            container: Container = self._client.containers.create(**create_kwargs)
+        except docker.errors.DockerException:
+            if config.runtime == "runsc":
+                logger.warning(
+                    "runsc runtime unavailable, falling back to default runtime"
+                )
+                create_kwargs.pop("runtime", None)
+                container = self._client.containers.create(**create_kwargs)
+            else:
+                raise
         container.start()
 
         # Inspect to find exposed port

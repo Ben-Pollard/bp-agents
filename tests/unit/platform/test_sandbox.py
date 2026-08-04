@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -108,7 +108,7 @@ class TestEgressPolicy:
 
 
 class TestDockerSandbox:
-    """Tests for DockerSandbox — uses mocked docker-py."""
+    """Tests for DockerSandbox — uses injected mock client."""
 
     @pytest.fixture
     def sandbox_config(self) -> SandboxConfig:
@@ -125,37 +125,41 @@ class TestDockerSandbox:
 
     @pytest.fixture
     def mock_docker_client(self) -> MagicMock:
-        with patch("docker.DockerClient") as MockDockerClient:
-            client_instance = MockDockerClient.return_value
-            client_instance.api.create_host_config.return_value = {}
-            yield client_instance
+        client = MagicMock()
+        client.api.create_host_config.return_value = {}
+        return client
+
+    @pytest.fixture
+    def sandbox(self, mock_docker_client: MagicMock) -> DockerSandbox:
+        return DockerSandbox(docker_client=mock_docker_client)
 
     async def test_create_returns_session_with_container_id(
-        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
     ) -> None:
         fake_container = MagicMock()
         fake_container.id = "abc123"
         mock_docker_client.containers.create.return_value = fake_container
 
-        sandbox = DockerSandbox()
         session = await sandbox.create(sandbox_config)
 
         assert session.container_id == "abc123"
 
     async def test_is_running_returns_true_for_running_container(
-        self, mock_docker_client: MagicMock
+        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
     ) -> None:
         fake_container = MagicMock()
         fake_container.status = "running"
         mock_docker_client.containers.get.return_value = fake_container
 
-        sandbox = DockerSandbox()
         result = await sandbox.is_running("abc123")
 
         assert result is True
 
     async def test_is_running_returns_false_for_missing_container(
-        self, mock_docker_client: MagicMock
+        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
     ) -> None:
         import docker
 
@@ -163,24 +167,22 @@ class TestDockerSandbox:
             "not found", response=MagicMock(status_code=404)
         )
 
-        sandbox = DockerSandbox()
         result = await sandbox.is_running("abc123")
 
         assert result is False
 
     async def test_destroy_removes_container(
-        self, mock_docker_client: MagicMock
+        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
     ) -> None:
         fake_container = MagicMock()
         mock_docker_client.containers.get.return_value = fake_container
 
-        sandbox = DockerSandbox()
         await sandbox.destroy("abc123")
 
         fake_container.remove.assert_called_once_with(force=True, v=True)
 
     async def test_destroy_ignores_missing_container(
-        self, mock_docker_client: MagicMock
+        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
     ) -> None:
         import docker
 
@@ -188,18 +190,16 @@ class TestDockerSandbox:
             "not found", response=MagicMock(status_code=404)
         )
 
-        sandbox = DockerSandbox()
         await sandbox.destroy("abc123")
 
     async def test_list_containers_filters_by_label(
-        self, mock_docker_client: MagicMock
+        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
     ) -> None:
         c1, c2 = MagicMock(), MagicMock()
         c1.id = "id1"
         c2.id = "id2"
         mock_docker_client.containers.list.return_value = [c1, c2]
 
-        sandbox = DockerSandbox()
         result = await sandbox.list_containers({"image": "test-image:latest"})
 
         assert result == ["id1", "id2"]
@@ -208,13 +208,15 @@ class TestDockerSandbox:
         )
 
     async def test_create_sets_env_with_proxy_defaults(
-        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
     ) -> None:
         fake_container = MagicMock()
         fake_container.id = "c1"
         mock_docker_client.containers.create.return_value = fake_container
 
-        sandbox = DockerSandbox()
         await sandbox.create(sandbox_config)
 
         _call_env = mock_docker_client.containers.create.call_args[1].get(
@@ -225,15 +227,39 @@ class TestDockerSandbox:
         assert _call_env["NO_PROXY"] == "localhost,127.0.0.1"
         assert _call_env["OPENCODE_PORT"] == "8080"
 
+    async def test_create_sets_env_with_custom_proxies(
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
+    ) -> None:
+        sandbox_config.http_proxy = "http://custom-proxy:3128"
+        sandbox_config.https_proxy = "http://custom-proxy:3128"
+        sandbox_config.no_proxy = "localhost,127.0.0.1,.internal"
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        mock_docker_client.containers.create.return_value = fake_container
+
+        await sandbox.create(sandbox_config)
+
+        _call_env = mock_docker_client.containers.create.call_args[1].get(
+            "environment", {}
+        )
+        assert _call_env["HTTP_PROXY"] == "http://custom-proxy:3128"
+        assert _call_env["HTTPS_PROXY"] == "http://custom-proxy:3128"
+        assert _call_env["NO_PROXY"] == "localhost,127.0.0.1,.internal"
+
     async def test_create_passes_runtime_when_runsc(
-        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
     ) -> None:
         sandbox_config.runtime = "runsc"
         fake_container = MagicMock()
         fake_container.id = "c1"
         mock_docker_client.containers.create.return_value = fake_container
 
-        sandbox = DockerSandbox()
         await sandbox.create(sandbox_config)
 
         assert (
@@ -241,25 +267,65 @@ class TestDockerSandbox:
         )
 
     async def test_create_omits_runtime_when_empty(
-        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
     ) -> None:
         fake_container = MagicMock()
         fake_container.id = "c1"
         mock_docker_client.containers.create.return_value = fake_container
 
-        sandbox = DockerSandbox()
         await sandbox.create(sandbox_config)
 
         assert "runtime" not in mock_docker_client.containers.create.call_args[1]
 
+    async def test_create_falls_back_when_runsc_unavailable(
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
+    ) -> None:
+        import docker
+
+        sandbox_config.runtime = "runsc"
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        mock_docker_client.containers.create.side_effect = [
+            docker.errors.DockerException("runsc not found"),
+            fake_container,
+        ]
+
+        await sandbox.create(sandbox_config)
+
+        assert mock_docker_client.containers.create.call_count == 2
+        assert "runtime" not in mock_docker_client.containers.create.call_args[1]
+
+    async def test_create_raises_when_non_runsc_fails(
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
+    ) -> None:
+        import docker
+
+        mock_docker_client.containers.create.side_effect = (
+            docker.errors.DockerException("some other error")
+        )
+
+        with pytest.raises(docker.errors.DockerException):
+            await sandbox.create(sandbox_config)
+
     async def test_create_sets_binds_and_resources(
-        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
     ) -> None:
         fake_container = MagicMock()
         fake_container.id = "c1"
         mock_docker_client.containers.create.return_value = fake_container
 
-        sandbox = DockerSandbox()
         await sandbox.create(sandbox_config)
 
         mock_docker_client.api.create_host_config.assert_called_once()
@@ -270,13 +336,15 @@ class TestDockerSandbox:
         assert any("/tmp/skills:/data/skills:ro" in b for b in hc_args["binds"])
 
     async def test_create_sets_labels(
-        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
     ) -> None:
         fake_container = MagicMock()
         fake_container.id = "c1"
         mock_docker_client.containers.create.return_value = fake_container
 
-        sandbox = DockerSandbox()
         await sandbox.create(sandbox_config)
 
         labels = mock_docker_client.containers.create.call_args[1].get("labels", {})
