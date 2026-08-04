@@ -15,17 +15,26 @@ class FakeTrackerReturns(Tracker):
     def __init__(self, tickets: list[Ticket]) -> None:
         self.tickets = tickets
 
-    async def list_ready(self, project: str) -> list[Ticket]:
-        return self.tickets
+    async def list_ready(self, project: str) -> list[dict]:
+        return [
+            {
+                "id": t.id,
+                "name": t.name,
+                "description": t.description,
+                "state": t.state.value if isinstance(t.state, TicketState) else t.state,
+                "project": t.project,
+            }
+            for t in self.tickets
+        ]
 
-    async def get_item(self, item_id: str, project: str) -> Ticket:
-        return Ticket(
-            id=item_id,
-            name="",
-            description=None,
-            state=TicketState.READY,
-            project=project,
-        )
+    async def get_item(self, item_id: str, project: str) -> dict:
+        return {
+            "id": item_id,
+            "name": "",
+            "description": None,
+            "state": TicketState.READY.value,
+            "project": project,
+        }
 
     async def update_state(self, item_id: str, state: str, project: str) -> None:
         pass
@@ -84,7 +93,7 @@ def test_pipeline_polls_tracker_and_dispatches_tickets(
 
         for ticket in ready:
             state = _to_pipeline_state(ticket, REDMINE_PROJECT)
-            config = {"configurable": {"thread_id": ticket.id}}
+            config = {"configurable": {"thread_id": ticket["id"]}}
             pipeline.invoke(state, config)
 
         logger.info("orchestrator shutting down")

@@ -36,9 +36,9 @@ def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
     raise RuntimeError("%s did not become ready within %ds" % (name, timeout))
 
 
-def _to_pipeline_state(ticket, project: str) -> TicketPipelineState:
+def _to_pipeline_state(ticket: dict, project: str) -> TicketPipelineState:
     return {
-        "ticket_id": ticket.id,
+        "ticket_id": ticket["id"],
         "project": project,
         "status": "ready",
         "tdd_output": None,
@@ -65,6 +65,7 @@ def main(tracker: Tracker | None = None) -> None:
             base_url=REDMINE_BASE_URL,
             api_key=REDMINE_API_KEY,
         )
+        asyncio.run(tracker.ensure_statuses())
 
     logger.info("orchestrator ready")
 
@@ -83,7 +84,7 @@ def main(tracker: Tracker | None = None) -> None:
                     for ticket in ready:
                         state = _to_pipeline_state(ticket, REDMINE_PROJECT)
                         config = {
-                            "configurable": {"thread_id": ticket.id},
+                            "configurable": {"thread_id": ticket["id"]},
                         }
                         pipeline.invoke(state, config)
                 except Exception:

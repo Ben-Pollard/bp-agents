@@ -5,21 +5,21 @@ import pytest
 
 from bp_agents.orchestrator.main import POLL_INTERVAL, main, wait_for_dependency
 from bp_agents.platform.tracker import Tracker
-from bp_agents.workflows.sdd.contracts import Ticket, TicketState
+from bp_agents.workflows.sdd.contracts import TicketState
 
 
 class FakeTracker(Tracker):
-    async def list_ready(self, project: str) -> list[Ticket]:
+    async def list_ready(self, project: str) -> list[dict]:
         return []
 
-    async def get_item(self, item_id: str, project: str) -> Ticket:
-        return Ticket(
-            id=item_id,
-            name="",
-            description=None,
-            state=TicketState.READY,
-            project=project,
-        )
+    async def get_item(self, item_id: str, project: str) -> dict:
+        return {
+            "id": item_id,
+            "name": "",
+            "description": None,
+            "state": TicketState.READY.value,
+            "project": project,
+        }
 
     async def update_state(self, item_id: str, state: str, project: str) -> None:
         pass

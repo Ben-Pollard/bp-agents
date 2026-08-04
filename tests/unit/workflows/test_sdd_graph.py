@@ -1,3 +1,4 @@
+import pytest
 from langgraph.graph import END
 
 from bp_agents.workflows.sdd.contracts import Ticket, TicketState
@@ -34,16 +35,22 @@ def _ts(
     }
 
 
-def test_route_ticket_returns_next_node() -> None:
-    assert route_ticket(_ts("ready")) == "implement"
-    assert route_ticket(_ts("implementing")) == "implement_complete"
-    assert route_ticket(_ts("awaiting_review")) == "review"
-    assert route_ticket(_ts("awaiting_revision")) == "revise"
-    assert route_ticket(_ts("revising")) == "revise_complete"
-    assert route_ticket(_ts("awaiting_verification")) == "verify"
-    assert route_ticket(_ts("awaiting_approval")) == "approve_final"
-    assert route_ticket(_ts("done")) == END
-    assert route_ticket(_ts("blocked")) == END
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        ("ready", "implement"),
+        ("implementing", "implement_complete"),
+        ("awaiting_review", "review"),
+        ("awaiting_revision", "revise"),
+        ("revising", "revise_complete"),
+        ("awaiting_verification", "verify"),
+        ("awaiting_approval", "approve_final"),
+        ("done", END),
+        ("blocked", END),
+    ],
+)
+def test_route_ticket_returns_next_node(status: str, expected: str) -> None:
+    assert route_ticket(_ts(status)) == expected
 
 
 def test_route_review_returns_approve_by_default() -> None:

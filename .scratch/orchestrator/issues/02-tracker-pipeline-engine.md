@@ -1,4 +1,4 @@
-Status: in-progress
+Status: ready-for-human
 
 # 02 — Tracker port + Pipeline engine skeleton
 
@@ -212,7 +212,32 @@ None specific to this slice.
 
 - #01 Infrastructure + Contracts
 
-## Outcome — REPLACED
+## Outcome — ESCALATED (Review loop exceeded 3 rounds)
+
+Implementation complete. TDD produced 73/73 passing tests (3 E2E skipped — need Redmine running), ruff clean. Review feedback narrowed across 3 rounds: 9 violations → 4 → 3.
+
+**Resolved across rounds:**
+- All 11 TicketState values reachable in graph
+- Feature-level nested graph (`build_feature_pipeline`) with `SDDFeatureState`
+- `Ticket.description` typed `str | None`, `Ticket.state` typed `TicketState`
+- E2E test level created (`tests/e2e/`)
+- Dead code removed (unreachable nodes)
+- Survivable test assertions (call-count → behavioral)
+- `revise_complete` routes to `awaiting_verification`
+- `Tracker` ABC is workflow-agnostic (`list[dict]` return)
+- `blocked` state reachable via `route_ticket`
+- `e2e` pytest marker registered
+
+**Remaining violations (round 3):**
+1. `tracker.py:27-39` — `_parse_issue` maps Redmine status name to TicketState via name matching, but `DEFAULT_STATUS_MAP` uses status IDs. Status name "In Progress" → fallback to READY. Fix: reverse-lookup by status ID.
+2. `FakeTracker`/`FakeTrackerReturns` return `list[Ticket]`/`Ticket` but `Tracker` ABC declares `list[dict]`/`dict`. Type mismatch across tests.
+3. `test_sdd_graph.py:37-46` — 9-branch assertion test should be parametrised.
+
+**Artefacts:**
+- Implement: `.scratch/orchestrator/outcomes/implement-outcome.json`
+- Review: `.scratch/orchestrator/outcomes/review-outcome.json`
+- Reduction: `.scratch/orchestrator/outcomes/reduction-outcome.json` (not yet created — escalated before reduction step)
+- QA: `.scratch/orchestrator/outcomes/verify-outcome.json` (not yet created — escalated before QA step)
 
 The original implementation built a PlaneTracker adapter and LangGraph pipeline skeleton. All code-side ACs passed (60/60 unit tests, 3/3 integration tests, ruff clean). However, 3 ACs were blocked by Plane infrastructure issues:
 
