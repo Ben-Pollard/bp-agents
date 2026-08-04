@@ -35,8 +35,9 @@ After starting Redmine (`docker compose up`), create an admin user and API key:
 2. Sign in with default credentials: `admin` / `admin`. Change password when prompted.
 3. Navigate to **My account → API access key** and show/generate an API key.
 4. Copy the API key to `.env` as `REDMINE_API_KEY`.
-5. Create a project and note its identifier. Set `REDMINE_PROJECT_ID` in `.env`.
-6. Create tickets with status "New" — the orchestrator polls for these as ready tickets.
+5. Create a new project (top menu **Administration → Projects → New project**). Choose an identifier (e.g. `my-project`).
+6. Set `REDMINE_PROJECT=my-project` in `.env`.
+7. Create at least one ticket with status **New** — the orchestrator polls for these as ready tickets.
 
 Redmine's REST API must be enabled. It is on by default. API docs at `http://localhost:8082/projects/<id>/api`.
 

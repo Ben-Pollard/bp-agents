@@ -31,7 +31,7 @@ services:
     environment:
       REDMINE_DB_POSTGRES: redmine-db
       REDMINE_DB_PORT: 5432
-      REDMINE_DB_USER: redmine
+      REDMINE_DB_USERNAME: redmine
       REDMINE_DB_PASSWORD: redmine_dev
       REDMINE_DB_DATABASE: redmine
     depends_on:
