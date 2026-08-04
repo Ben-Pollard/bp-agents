@@ -6,13 +6,7 @@ import pytest
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.contracts import TicketState
 from bp_agents.workflows.sdd.tracker import RedmineTracker
-
-
-def _make_handler(json_data: dict, status_code: int = 200):
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(status_code=status_code, json=json_data)
-
-    return handler
+from tests.conftest import make_handler
 
 
 def _populate_maps(tracker: RedmineTracker) -> None:
@@ -46,7 +40,7 @@ async def test_list_ready_returns_issues() -> None:
     ]
 
     transport = httpx.MockTransport(
-        _make_handler(
+        make_handler(
             {"issues": mock_issues, "total_count": 1, "offset": 0, "limit": 25}
         )
     )
@@ -67,7 +61,7 @@ async def test_list_ready_returns_issues() -> None:
 
 @pytest.mark.asyncio
 async def test_update_state_calls_put() -> None:
-    transport = httpx.MockTransport(_make_handler({}))
+    transport = httpx.MockTransport(make_handler({}))
     client = httpx.AsyncClient(transport=transport, base_url="http://redmine:3000")
     tracker = RedmineTracker(
         base_url="http://redmine:3000",
@@ -92,7 +86,7 @@ async def test_get_item_returns_ticket() -> None:
         "updated_on": "2024-01-01T00:00:00Z",
     }
 
-    transport = httpx.MockTransport(_make_handler({"issue": mock_issue}))
+    transport = httpx.MockTransport(make_handler({"issue": mock_issue}))
     client = httpx.AsyncClient(transport=transport, base_url="http://redmine:3000")
     tracker = RedmineTracker(
         base_url="http://redmine:3000",
