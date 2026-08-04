@@ -1,59 +1,107 @@
 {
-  "modules_audited": 7,
-  "total_lines": 335,
-  "lines_eliminable": 0,
+  "modules_audited": 6,
+  "total_lines": 776,
+  "lines_eliminable": 67,
   "reduction_table": [
     {
-      "module": "src/bp_agents/orchestrator/main.py",
-      "lines": 62,
-      "what_changes": "Verify finding #1: LANGFUSE_HOST const removed. Generic wait_for_dependency remains (needed for Plane/egress-proxy health check). RESOLVED.",
+      "module": "src/bp_agents/platform/sandbox/__init__.py",
+      "lines": 13,
+      "what_changes": "No changes. Standard re-export + __all__ public-API pattern; actively used by tests and re-exported names.",
       "reduction": 0,
       "dep_cost": "none"
     },
     {
-      "module": "src/bp_agents/platform/tracker.py",
-      "lines": 9,
-      "what_changes": "Verify finding #2: get_item/add_comment ABC methods removed. Only list_ready and update_state remain. RESOLVED.",
+      "module": "src/bp_agents/platform/sandbox/base.py",
+      "lines": 17,
+      "what_changes": "No changes. ABC interface is a deliberate public abstraction; DockerSandbox is the only impl but the ABC is a documented contract, not dead code.",
       "reduction": 0,
       "dep_cost": "none"
     },
     {
-      "module": "src/bp_agents/workflows/sdd/graph.py",
-      "lines": 93,
-      "what_changes": "Verify finding #3: review→approve_review and verify→verification_pass now use add_edge, not conditional edges with hard-coded lambdas. RESOLVED.",
+      "module": "src/bp_agents/platform/sandbox/config.py",
+      "lines": 24,
+      "what_changes": "No changes. Two plain dataclasses already using stdlib dataclasses decisively.",
       "reduction": 0,
       "dep_cost": "none"
     },
     {
-      "module": "src/bp_agents/workflows/sdd/state.py",
-      "lines": 28,
-      "what_changes": "Verify findings #4 and #5: SDDFeatureState TypedDict removed. Unused imports (StageContract, ACChange, BehavioralVerifyOutput, Intervention, MinimizingOutput, StageName, TicketSpec) removed. RESOLVED.",
+      "module": "src/bp_agents/platform/sandbox/docker_sandbox.py",
+      "lines": 147,
+      "what_changes": "No source reduction. Docker SDK already solved the container orchestration. Note minor defect: EgressPolicy.__init__ logs the allowlist, and DockerSandbox.__init__ calls log_allowlist() again (egress.py:34 + docker_sandbox.py:29), so the allowlist is logged twice; remove the redundant call at docker_sandbox.py:29. Not counted as line reduction.",
       "reduction": 0,
       "dep_cost": "none"
     },
     {
-      "module": "src/bp_agents/workflows/sdd/contracts/__init__.py",
-      "lines": 93,
-      "what_changes": "Verify finding #6: TicketSpec TypedDict removed. Forward-looking types (TicketState, StageName, InterventionType, etc.) remain as planned API surface for downstream issues. RESOLVED.",
+      "module": "src/bp_agents/platform/sandbox/egress.py",
+      "lines": 57,
+      "what_changes": "No changes. urlparse-based allowlist matching is correct and minimal; no library needed.",
       "reduction": 0,
       "dep_cost": "none"
     },
     {
-      "module": "src/bp_agents/workflows/sdd/tracker.py",
-      "lines": 42,
-      "what_changes": "Verify finding #7: get_item/add_comment concrete methods removed. Only __init__, list_ready, and update_state remain. RESOLVED.",
-      "reduction": 0,
-      "dep_cost": "none"
-    },
-    {
-      "module": "src/bp_agents/platform/contracts/__init__.py",
-      "lines": 8,
-      "what_changes": "StageContract TypedDict is technically unused by production code (6 eliminable lines). Forward-looking platform contract definition; below 20-line threshold. Not flagged.",
-      "reduction": 0,
+      "module": "tests/unit/platform/test_sandbox.py",
+      "lines": 518,
+      "what_changes": "Remove 9 tests that re-test stdlib behavior or duplicate covered logic: ABC/abstractmethod tests, dataclass default/assignment tests, docstring-content test, trivial constant test, and two egress tests that duplicate TestEgressPolicy coverage through a DockerSandbox instance.",
+      "reduction": 67,
       "dep_cost": "none"
     }
   ],
-  "violations": [],
-  "review_notes": "Reduction audit round 3. All 7 previous violations (66 eliminable lines) confirmed resolved. Total lines dropped from 411 to 335 (76 lines removed, exceeding the 66 identified). Current codebase: 335 lines across 7 non-empty source modules + 290 test lines. No new violations meeting the 20-line threshold. StageContract (platform/contracts, 6 lines) is technically unused but is a forward-looking platform contract definition — below threshold and architecturally intentional.",
+  "violations": [
+    {
+      "file_line": "tests/unit/platform/test_sandbox.py:17-20",
+      "lines": 4,
+      "replacement": "Delete. Python's abc.ABC already raises TypeError on instantiation of an abstract class.",
+      "question": 1
+    },
+    {
+      "file_line": "tests/unit/platform/test_sandbox.py:22-27",
+      "lines": 6,
+      "replacement": "Delete. @abstractmethod already sets __isabstractmethod__; stdlib guarantees this.",
+      "question": 1
+    },
+    {
+      "file_line": "tests/unit/platform/test_sandbox.py:29-40",
+      "lines": 12,
+      "replacement": "Delete. Dataclass field defaults are already guaranteed by stdlib dataclasses.",
+      "question": 1
+    },
+    {
+      "file_line": "tests/unit/platform/test_sandbox.py:42-50",
+      "lines": 9,
+      "replacement": "Delete. Dataclass field assignment/override is already guaranteed by stdlib dataclasses.",
+      "question": 1
+    },
+    {
+      "file_line": "tests/unit/platform/test_sandbox.py:52-61",
+      "lines": 10,
+      "replacement": "Delete. Dataclass field storage is already guaranteed by stdlib dataclasses.",
+      "question": 1
+    },
+    {
+      "file_line": "tests/unit/platform/test_sandbox.py:143-155",
+      "lines": 13,
+      "replacement": "Delete. Asserts on docstring text, not on behavior; no value added.",
+      "question": 3
+    },
+    {
+      "file_line": "tests/unit/platform/test_sandbox.py:156-157",
+      "lines": 2,
+      "replacement": "Delete. Trivially asserts a constant contains a value; no behavioral coverage.",
+      "question": 3
+    },
+    {
+      "file_line": "tests/unit/platform/test_sandbox.py:507-512",
+      "lines": 6,
+      "replacement": "Delete. Duplicates test_check_raises_for_blocked_destination (line 92-97) via DockerSandbox instance.",
+      "question": 3
+    },
+    {
+      "file_line": "tests/unit/platform/test_sandbox.py:514-518",
+      "lines": 5,
+      "replacement": "Delete. Duplicates test_check_passes_for_allowed_destination (line 99-101) via DockerSandbox instance.",
+      "question": 3
+    }
+  ],
+  "review_notes": "All 6 modules audited (776 lines total). Source code (__init__.py, base.py, config.py, docker_sandbox.py, egress.py = 258 lines) is clean: stdlib dataclasses/abc already used, Docker SDK already handles container orchestration, urlparse-based egress matching is minimal. No library dependency would reduce the source. All 67 eliminable lines are in the test file (518 lines): 5 tests re-test stdlib behavior (Q1, 41 lines) and 4 tests are duplicative or trivial (Q3, 26 lines). One source defect noted but not counted: EgressPolicy allowlist is logged twice (egress.py:34 and docker_sandbox.py:29) because DockerSandbox.__init__ redundantly calls log_allowlist() after EgressPolicy.__init__ already logged; remove the redundant call. Total reduction 67 lines, well above the 20-line threshold. No git used.",
   "action": "approved"
 }

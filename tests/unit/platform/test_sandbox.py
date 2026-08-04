@@ -264,7 +264,7 @@ class TestDockerSandbox:
 
         assert result == ["id1", "id2"]
         mock_docker_client.containers.list.assert_called_once_with(
-            filters={"label": {"bp_agents.sandbox.image": "test-image:latest"}}
+            filters={"label": ["bp_agents.sandbox.image=test-image:latest"]}
         )
 
     async def test_create_sets_env_with_proxy_defaults(
@@ -388,12 +388,12 @@ class TestDockerSandbox:
 
         await sandbox.create(sandbox_config)
 
-        mock_docker_client.api.create_host_config.assert_called_once()
-        hc_args = mock_docker_client.api.create_host_config.call_args[1]
-        assert hc_args["mem_limit"] == "256m"
-        assert hc_args["nano_cpus"] == int(1 * 1e9)
-        assert any("/tmp/workspace:/data/workspace:ro" in b for b in hc_args["binds"])
-        assert any("/tmp/skills:/data/skills:ro" in b for b in hc_args["binds"])
+        call_kwargs = mock_docker_client.containers.create.call_args[1]
+        assert call_kwargs["mem_limit"] == "256m"
+        assert call_kwargs["nano_cpus"] == int(1 * 1e9)
+        binds = call_kwargs["binds"]
+        assert any("/tmp/workspace:/data/workspace:ro" in b for b in binds)
+        assert any("/tmp/skills:/data/skills:ro" in b for b in binds)
 
     async def test_create_sets_labels(
         self,
@@ -423,8 +423,8 @@ class TestDockerSandbox:
 
         await sandbox.create(sandbox_config_with_network)
 
-        hc_args = mock_docker_client.api.create_host_config.call_args[1]
-        assert hc_args["network_mode"] == "my-custom-network"
+        call_kwargs = mock_docker_client.containers.create.call_args[1]
+        assert call_kwargs["network"] == "my-custom-network"
 
     async def test_create_passes_ports_to_create(
         self,
@@ -441,7 +441,7 @@ class TestDockerSandbox:
         ports = mock_docker_client.containers.create.call_args[1].get("ports", [])
         assert 8080 in ports
 
-    async def test_create_passes_port_bindings_to_host_config(
+    async def test_create_passes_port_bindings(
         self,
         sandbox_config: SandboxConfig,
         mock_docker_client: MagicMock,
@@ -453,9 +453,9 @@ class TestDockerSandbox:
 
         await sandbox.create(sandbox_config)
 
-        hc_args = mock_docker_client.api.create_host_config.call_args[1]
-        assert "port_bindings" in hc_args
-        assert hc_args["port_bindings"] == {8080: None}
+        call_kwargs = mock_docker_client.containers.create.call_args[1]
+        assert "port_binding" in call_kwargs
+        assert call_kwargs["port_binding"] == {8080: None}
 
     async def test_create_extracts_port_from_container(
         self,

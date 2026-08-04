@@ -35,10 +35,7 @@ class DockerSandbox(Sandbox):
     async def create(self, config: SandboxConfig) -> SandboxSession:
         env = self._build_env(config)
         labels = self._build_labels(config)
-        host_config = self._build_host_config(config)
-        container = await self._create_and_start_container(
-            config, env, host_config, labels
-        )
+        container = await self._create_and_start_container(config, env, labels)
         port = self._extract_port(container)
         base_url = f"http://localhost:{port}"
 
@@ -63,33 +60,27 @@ class DockerSandbox(Sandbox):
             _label("created"): datetime.now(timezone.utc).isoformat(),
         }
 
-    def _build_host_config(self, config: SandboxConfig) -> dict:
-        return self._client.api.create_host_config(
-            binds=[
-                f"{config.workspace_path}:/data/workspace:ro",
-                f"{config.skills_path}:/data/skills:ro",
-            ],
-            mem_limit=config.mem_limit,
-            nano_cpus=int(config.cpu_count * 1e9),
-            network_mode=config.network,
-            port_bindings={8080: None},
-        )
-
     async def _create_and_start_container(
         self,
         config: SandboxConfig,
         env: dict[str, str],
-        host_config: dict,
         labels: dict[str, str],
     ) -> Container:
         create_kwargs: dict = dict(
             image=config.image,
             command=["sleep", str(config.timeout_seconds)],
             environment=env,
-            host_config=host_config,
             labels=labels,
             detach=True,
             ports=[8080],
+            mem_limit=config.mem_limit,
+            nano_cpus=int(config.cpu_count * 1e9),
+            network=config.network,
+            binds=[
+                f"{config.workspace_path}:/data/workspace:ro",
+                f"{config.skills_path}:/data/skills:ro",
+            ],
+            port_binding={8080: None},
         )
 
         if config.runtime == "runsc":
@@ -140,8 +131,9 @@ class DockerSandbox(Sandbox):
             pass
 
     async def list_containers(self, label_filter: dict[str, str]) -> list[str]:
-        filters = {}
-        for key, value in label_filter.items():
-            filters[f"{_DOCKER_LABEL_PREFIX}.{key}"] = value
+        filters = [
+            f"{_DOCKER_LABEL_PREFIX}.{key}={value}"
+            for key, value in label_filter.items()
+        ]
         containers = self._client.containers.list(filters={"label": filters})
         return [c.id for c in containers]

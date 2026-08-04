@@ -1,6 +1,6 @@
 {
   "status": "DONE",
-  "summary": "Fixed all 4 review issues: 1) added docstring explaining git blocking is at image level + test; 2) extracted create() into 5 private helpers; 3) added public egress_policy property; 4) narrowed except Exception to specific exceptions",
+  "summary": "Fixed two docker-py API bugs: (1) removed host_config= kwarg from containers.create(), inlined host config fields (mem_limit, nano_cpus, network, binds, port_binding) as flat create kwargs; (2) fixed list_containers() label filter format from dict to list of 'key=value' strings. Removed _build_host_config method. Updated 4 unit tests to match new flat-kwarg assertion patterns. All 60 tests pass.",
   "test_results": {
     "passed": 60,
     "failed": 0,

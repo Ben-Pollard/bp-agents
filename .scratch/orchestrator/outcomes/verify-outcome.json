@@ -1,65 +1,102 @@
 {
-  "status": "PASS",
+  "status": "FAIL",
   "stage_results": {
     "lint": {
       "passed": true,
-      "detail": "ruff check passed for src/ and tests/"
+      "detail": "ruff check passed for src/bp_agents/platform/sandbox/ and tests/unit/platform/test_sandbox.py"
     },
     "unit_tests": {
-      "passed": 17,
+      "passed": 60,
       "failed": 0,
-      "detail": "all 17 unit tests pass in 3.24s"
+      "detail": "60/60 unit tests pass (43 sandbox-specific: 41 TestDockerSandbox/TestEgressPolicy + 2 sandbox base/config)"
     },
     "integration_tests": {
       "passed": 0,
       "failed": 0,
-      "detail": "no integration test files exist in tests/integration/ (only __init__.py)"
+      "detail": "no integration test files exist in tests/integration/ (only __init__.py). Accepted trade-off per issue; live-system verification performed against real Docker daemon instead."
     }
   },
-  "failed_acs": [],
-  "ac_results": [
+  "failed_acs": [
     {
       "id": "AC-01",
-      "text": "PlaneTracker.list_ready('project-name') returns tickets from Plane API",
-      "result": "PASS",
-      "evidence": "PlaneTracker.list_ready implemented at src/bp_agents/workflows/sdd/tracker.py:28-35. Unit test test_list_ready_returns_issues passes with httpx MockTransport returning mock results. Method calls GET /api/v1/workspaces/{slug}/projects/{project}/issues?state_group=backlog and returns results list."
+      "text": "DockerSandbox.create(config) returns a running container with gVisor runtime (runsc)",
+      "reason": "FAIL: create() raises TypeError: run() got an unexpected keyword argument 'host_config'. docker_sandbox.py:89 passes host_config=host_config to the high-level containers.create(), which does not accept that kwarg (it builds host_config internally from individual kwargs). TypeErrors are not docker.errors.DockerException, so the runsc fallback (line 100) never triggers. Reproduced live against real Docker daemon."
     },
     {
       "id": "AC-02",
-      "text": "PlaneTracker.update_state(ticket_id, state) updates Plane state group",
-      "result": "PASS",
-      "evidence": "PlaneTracker.update_state implemented at src/bp_agents/workflows/sdd/tracker.py:37-42. Unit test test_update_state_calls_patch passes — invokes PATCH /api/v1/workspaces/{slug}/projects/{project}/issues/{id} with state JSON body."
+      "text": "Sandbox can reach PyPI (package registry) — agent tool call pip install succeeds through proxy",
+      "reason": "CANT_VERIFY: depends on AC-01 create() which is broken, so no sandbox container can be brought up to exercise `pip install` through the egress proxy. Only the EgressPolicy.is_allowed() unit-level logic (pypi.org allowed) is verified."
     },
     {
       "id": "AC-03",
-      "text": "Poll loop discovers ready tickets and logs count per tick (ticket discovery: <N> ready)",
-      "result": "PASS",
-      "evidence": "Poll loop in main.py:51-56 uses asyncio.run(tracker.list_ready(PLANE_PROJECT)) with logger.info('ticket discovery: %d ready  project=%s', len(ready), PLANE_PROJECT). Unit test test_main_logs_ready_when_all_dependencies_up verifies poll loop execution. Orchestrator container runs with all deps up but Plane workspace not configured — no tickets to discover, but code path is verified."
+      "text": "Sandbox cannot reach arbitrary internet — curl https://example.com fails; blocked egress logged to stdout",
+      "reason": "CANT_VERIFY: depends on AC-01 create() which is broken, so no live sandbox exists to attempt curl through the proxy. Unit-level EgressPolicy.check() blocks example.com and logs 'blocked egress' (verified in unit tests), but the full running-container stdout path is not exercised."
     },
     {
       "id": "AC-04",
-      "text": "Graph transition logs ticket <id>: <from> -> <to> with timestamp for every transition",
-      "result": "PASS",
-      "evidence": "_log function at src/bp_agents/workflows/sdd/graph.py:25-35 logs 'ticket %s: %s -> %s  project=%s  [%s]' with datetime.now(timezone.utc).isoformat(). All node functions call _log via _advance. test_pipeline_with_sqlite_persistence exercises full state machine through all transitions."
-    },
-    {
-      "id": "AC-05",
-      "text": "Stopped orchestrator resumes pipeline from last persisted state (SqliteSaver checkpoint)",
-      "result": "PASS",
-      "evidence": "build_ticket_pipeline accepts optional SqliteSaver checkpointer. test_pipeline_with_sqlite_persistence creates temp DB, runs pipeline to completion, then creates new app + checkpointer pointing to same DB and retrieves saved state via checkpointer.get(). Assert saved_state['channel_values']['status'] == 'done'."
+      "text": "Git commands (git status, git add, etc.) fail inside sandbox with a clear error",
+      "reason": "CANT_VERIFY: git-blocking is enforced at the container image level (image must not include git), documented only in the EgressPolicy docstring (egress.py:26-29). No sandbox image is built or referenced, so no live container exists to confirm git returns a clear error. EgressPolicy only blocks network egress to git remotes, not local git commands."
     },
     {
       "id": "AC-06",
-      "text": "Multiple tickets flowing through the graph concurrently without interference",
+      "text": "DockerSandbox.list_containers(label_filter) finds containers by label",
+      "reason": "FAIL: docker_sandbox.py:146 passes filters={'label': {key: value}} but docker-py only matches label filters given as a list of 'key=value' strings. Reproduced live: a container labeled bp_agents.sandbox.image=probe:latest was returned by docker CLI (--filter label=...) and by docker-py filters={'label': ['bp_agents.sandbox.image=probe:latest']}, but list_containers() returned []. Method is genuinely broken against the real API."
+    },
+    {
+      "id": "AC-08",
+      "text": "Fallback to hardened plain Docker works if gVisor unavailable",
+      "reason": "FAIL: fallback path (docker_sandbox.py:100-106, catching docker.errors.DockerException) is unreachable for the actual failure mode. The create() failure is a TypeError (unexpected kwarg host_config), not a DockerException, so it propagates without falling back. Even had runsc been absent, the TypeError would surface first. Reproduced live: image creation with runsc config fails with TypeError, not a clean fallback."
+    }
+  ],
+  "ac_results": [
+    {
+      "id": "AC-01",
+      "text": "DockerSandbox.create(config) returns a running container with gVisor runtime (runsc)",
+      "result": "FAIL",
+      "evidence": "Live run against Docker daemon: TypeError: run() got an unexpected keyword argument 'host_config' at docker_sandbox.py:99. High-level containers.create() does not accept host_config; runsc is not installed on host (which runsc -> not found), so even the intended fallback path is unreachable because TypeError is not a DockerException."
+    },
+    {
+      "id": "AC-02",
+      "text": "Sandbox can reach PyPI (package registry) — agent tool call pip install succeeds through proxy",
+      "result": "CANT_VERIFY",
+      "evidence": "Blocked by AC-01 create() failure; no container to reach PyPI. EgressPolicy unit test confirms pypi.org in DEFAULT_ALLOWLIST and is_allowed('https://pypi.org/simple/') is True."
+    },
+    {
+      "id": "AC-03",
+      "text": "Sandbox cannot reach arbitrary internet — curl https://example.com fails; blocked egress logged to stdout",
+      "result": "CANT_VERIFY",
+      "evidence": "Blocked by AC-01 create() failure. Unit test confirms EgressPolicy.check('https://example.com') raises EgressBlockedError and logs 'blocked egress'. Running-container stdout path not exercised."
+    },
+    {
+      "id": "AC-04",
+      "text": "Git commands (git status, git add, etc.) fail inside sandbox with a clear error",
+      "result": "CANT_VERIFY",
+      "evidence": "Image-level design only (egress.py:26-29 docstring). No sandbox image built; cannot confirm live git error. EgressPolicy blocks git remotes over network but not local git commands."
+    },
+    {
+      "id": "AC-05",
+      "text": "DockerSandbox.destroy(container_id) removes container",
       "result": "PASS",
-      "evidence": "test_multiple_tickets_no_interference creates two TicketPipelineState objects with distinct thread_ids (TICK-1, TICK-2), invokes both through same pipeline with shared SqliteSaver in :memory:. Results show ticket_id preserved and both reach status='done' independently."
+      "evidence": "Live: created real container 'verify-probe' via docker CLI, called sb.destroy('verify-probe'); is_running returns False afterwards and container is gone. destroy() calls container.remove(force=True, v=True); NotFound handled."
+    },
+    {
+      "id": "AC-06",
+      "text": "DockerSandbox.list_containers(label_filter) finds containers by label",
+      "result": "FAIL",
+      "evidence": "Live: container labeled bp_agents.sandbox.image=probe:latest existed. docker CLI --filter label=... returned it; docker-py filters={'label': ['bp_agents.sandbox.image=probe:latest']} returned it; but list_containers() using filters={'label': {key:value}} returned []. Wrong filter format."
     },
     {
       "id": "AC-07",
-      "text": "Tickets grouped by project in logs and Plane UI",
+      "text": "Egress allowlist is configurable and logged on startup",
       "result": "PASS",
-      "evidence": "Graph logging includes project=%s in transition log line (graph.py:29). Poll loop includes project=%s in discovery log line (main.py:54). TicketPipelineState carries project field. Plane UI natively groups tickets by project. No additional code needed."
+      "evidence": "Live: DockerSandbox() construction logs 'egress allowlist: [...]' to stdout (egress.py:36-37 and again at docker_sandbox.py:29). Configurable via EgressPolicy(allowlist=[...]) — unit test test_custom_allowlist passes. Note: allowlist logged twice (redundant call at docker_sandbox.py:29), minor defect."
+    },
+    {
+      "id": "AC-08",
+      "text": "Fallback to hardened plain Docker works if gVisor unavailable",
+      "result": "FAIL",
+      "evidence": "Live: create() with runsc config raises TypeError (host_config kwarg), not DockerException, so the except docker.errors.DockerException fallback (docker_sandbox.py:100) never executes. runsc absent on host; fallback path unreachable due to the create() bug."
     }
   ],
-  "summary": "All 7 acceptance criteria pass. Lint passes, all 17 unit tests pass. No integration tests exist. The live orchestrator starts and connects to all dependencies but cannot discover tickets because Plane workspace slug 'my-workspace' does not exist in the Plane instance — this is a configuration/environment issue, not a code failure. All code paths are verified by passing unit tests."
+  "summary": "FAIL. Lint passes, 60/60 unit tests pass, no integration tests exist. Live-system verification against a real Docker daemon exposed two genuine bugs to the packaged API: (1) create() passes host_config to the high-level containers.create() which does not accept it, raising TypeError and breaking the runsc/fallback path (AC-01/02/03/08); (2) list_containers() uses an invalid label filter format, returning [] even when matching labeled containers exist (AC-06). destroy() and is_running() work live; the egress allowlist is configurable and logged on startup (AC-07). AC-02/03/04 cannot be verified live because create() is broken and no sandbox image exists. Unit tests cover the logic but mock away the docker-py API contract, so they miss these integration failures. Fix required before approval."
 }
