@@ -21,6 +21,7 @@ def _ts(
     status: str,
     review_approved: bool | None = None,
     verification_passed: bool | None = None,
+    blocked_reason: str | None = None,
 ) -> TicketPipelineState:
     return {
         "ticket_id": "TICK-1",
@@ -32,6 +33,7 @@ def _ts(
         "diff": None,
         "review_approved": review_approved,
         "verification_passed": verification_passed,
+        "blocked_reason": blocked_reason,
     }
 
 
@@ -71,6 +73,18 @@ def test_route_verify_returns_fail_when_not_passed() -> None:
     )
 
 
+def test_route_ticket_returns_block_when_blocked_reason() -> None:
+    assert route_ticket(_ts("ready", blocked_reason="blocking issue")) == "block"
+
+
+def test_route_ticket_returns_block_when_blocked_reason_and_implementing() -> None:
+    assert route_ticket(_ts("implementing", blocked_reason="dep on API")) == "block"
+
+
+def test_route_ticket_ignores_blocked_reason_when_already_blocked() -> None:
+    assert route_ticket(_ts("blocked", blocked_reason="still blocked")) == END
+
+
 def test_pipeline_advances_ready_to_completion() -> None:
     app = build_ticket_pipeline()
     initial = _ts("ready")
@@ -86,10 +100,10 @@ def test_pipeline_flow_from_awaiting_revision() -> None:
     assert result["status"] == "done"
 
 
-def test_pipeline_flow_from_verifying() -> None:
+def test_pipeline_flow_from_awaiting_verification() -> None:
     app = build_ticket_pipeline()
     config = {"configurable": {"thread_id": "TICK-4"}}
-    initial = _ts("verifying")
+    initial = _ts("awaiting_verification")
     result = app.invoke(initial, config)
     assert result["status"] == "done"
 

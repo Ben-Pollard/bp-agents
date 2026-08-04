@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -103,3 +105,85 @@ async def test_get_item_returns_ticket() -> None:
 
     assert ticket["id"] == "1"
     assert ticket["name"] == "Implement login"
+
+
+@pytest.mark.asyncio
+async def test_ensure_statuses_uses_existing() -> None:
+    existing_statuses = [
+        {"id": 1, "name": "ready"},
+        {"id": 2, "name": "implementing"},
+        {"id": 3, "name": "awaiting_review"},
+        {"id": 4, "name": "reviewing"},
+        {"id": 5, "name": "awaiting_revision"},
+        {"id": 6, "name": "revising"},
+        {"id": 7, "name": "awaiting_verification"},
+        {"id": 8, "name": "verifying"},
+        {"id": 9, "name": "awaiting_approval"},
+        {"id": 10, "name": "done"},
+        {"id": 11, "name": "blocked"},
+    ]
+    handler_calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        handler_calls.append({"method": request.method, "url": str(request.url)})
+        return httpx.Response(
+            status_code=200,
+            json={"issue_statuses": existing_statuses},
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport, base_url="http://redmine:3000")
+    tracker = RedmineTracker(
+        base_url="http://redmine:3000",
+        api_key="test-key",
+        client=client,
+    )
+
+    await tracker.ensure_statuses()
+
+    assert len(handler_calls) == 1
+    assert handler_calls[0]["method"] == "GET"
+    assert tracker._status_map["ready"] == 1
+    assert tracker._status_map["blocked"] == 11
+    assert tracker._reverse_map[1] == "ready"
+    assert tracker._reverse_map[11] == "blocked"
+
+
+@pytest.mark.asyncio
+async def test_ensure_statuses_creates_missing() -> None:
+    existing_statuses = [
+        {"id": 1, "name": "ready"},
+        {"id": 2, "name": "done"},
+    ]
+    created_statuses: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(
+                status_code=200,
+                json={"issue_statuses": existing_statuses},
+            )
+        body = json.loads(request.content)
+        created = body["issue_status"]
+        new_id = 10 + len(created_statuses) + 1
+        entry = {"id": new_id, **created}
+        created_statuses.append(entry)
+        return httpx.Response(
+            status_code=201,
+            json={"issue_status": entry},
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport, base_url="http://redmine:3000")
+    tracker = RedmineTracker(
+        base_url="http://redmine:3000",
+        api_key="test-key",
+        client=client,
+    )
+
+    await tracker.ensure_statuses()
+
+    assert tracker._status_map["ready"] == 1
+    assert tracker._status_map["done"] == 2
+    for s in TicketState:
+        assert s.value in tracker._status_map

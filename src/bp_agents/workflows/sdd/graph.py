@@ -1,3 +1,4 @@
+import functools
 import logging
 from datetime import datetime, timezone
 
@@ -31,9 +32,11 @@ def _advance(state: TicketPipelineState, to: str) -> dict:
 
 
 def _node(target: str):
+    @functools.wraps(lambda: None)
     def node_fn(state: TicketPipelineState) -> dict:
         return _advance(state, target)
 
+    node_fn.__name__ = f"node_{target}"
     return node_fn
 
 
@@ -41,11 +44,9 @@ ROUTE_MAP: dict[str, str] = {
     "ready": "implement",
     "implementing": "implement_complete",
     "awaiting_review": "review",
-    "reviewing": "review",
     "awaiting_revision": "revise",
     "revising": "revise_complete",
     "awaiting_verification": "verify",
-    "verifying": "verify",
     "awaiting_approval": "approve_final",
 }
 
