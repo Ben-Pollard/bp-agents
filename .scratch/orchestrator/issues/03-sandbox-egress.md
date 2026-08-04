@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: in-progress
 
 # 03 — Sandbox adapter + Egress proxy
 

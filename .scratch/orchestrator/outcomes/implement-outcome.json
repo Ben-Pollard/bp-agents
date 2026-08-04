@@ -1,23 +1,13 @@
 {
-  "summary": "Addressed all 6 reduction audit findings — removed LANGFUSE_HOST, dead Tracker ABC methods, SDDFeatureState/TicketSpec, and conditional edges returning constants; replaced with add_edge",
-  "files_changed": [
-    "src/bp_agents/orchestrator/main.py",
-    "src/bp_agents/platform/tracker.py",
-    "src/bp_agents/workflows/sdd/graph.py",
-    "src/bp_agents/workflows/sdd/state.py",
-    "src/bp_agents/workflows/sdd/contracts/__init__.py",
-    "src/bp_agents/workflows/sdd/tracker.py",
-    "tests/unit/workflows/test_sdd_tracker.py",
-    "tests/unit/platform/test_tracker.py"
-  ],
-  "changes": {
-    "1_main_langfuse": "Removed LANGFUSE_HOST const and its wait_for_dependency call from main.py (2 lines)",
-    "2_tracker_abc": "Removed get_item and add_comment abstract methods from Tracker ABC (6 lines)",
-    "3_graph_conditional_edges": "Replaced conditional_edges for review/verify with add_edge (16 lines)",
-    "4_state_sdd_feature_state": "Removed SDDFeatureState TypedDict from state.py (16 lines)",
-    "5_state_unused_imports": "Removed unused imports that only served dead SDDFeatureState (7 lines)",
-    "6_contracts_ticket_spec": "Removed TicketSpec TypedDict from contracts/__init__.py (5 lines)",
-    "7_tracker_concrete": "Removed get_item and add_comment from PlaneTracker (14 lines)"
+  "status": "DONE",
+  "summary": "Implemented platform.sandbox module with DockerSandbox (docker-py adapter with gVisor runtime support), EgressPolicy (configurable allowlist with defaults for LLM APIs, package registries, MCP endpoints), and full test suite (25 tests). DockerSandbox.create() returns running containers with proxy defaults, bind mounts, resource limits, and labels. EgressPolicy blocks arbitrary internet/git remotes and logs allowlist on startup.",
+  "test_results": {
+    "passed": 25,
+    "failed": 0,
+    "skipped": 0
   },
-  "test_results": "17 passed in 3.26s"
+  "concerns": [
+    "gVisor (runsc) runtime not available in current Docker environment — fallback to plain Docker tested via runtime='' config path. Smoke test needed before committing to runsc.",
+    "Integration/E2E tests (pip install through proxy, curl blocked, git commands failing) require running Docker daemon with mitmproxy and are not covered by unit tests."
+  ]
 }

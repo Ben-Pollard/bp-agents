@@ -1,0 +1,284 @@
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from bp_agents.platform.sandbox import Sandbox
+from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
+from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
+from bp_agents.platform.sandbox.egress import (
+    DEFAULT_ALLOWLIST,
+    EgressBlockedError,
+    EgressPolicy,
+)
+
+
+def test_sandbox_is_abstract() -> None:
+    with pytest.raises(TypeError):
+        Sandbox()  # type: ignore[abstract]
+
+
+def test_sandbox_has_abstract_methods() -> None:
+    methods = ["create", "is_running", "destroy", "list_containers"]
+    for m in methods:
+        assert hasattr(Sandbox, m)
+        assert getattr(Sandbox, m).__isabstractmethod__
+
+
+def test_sandbox_config_defaults() -> None:
+    config = SandboxConfig(
+        image="img",
+        workspace_path="/w",
+        skills_path="/s",
+    )
+    assert config.runtime == "runsc"
+    assert config.timeout_seconds == 300
+    assert config.mem_limit == "512m"
+    assert config.cpu_count == 2
+
+
+def test_sandbox_session_fields() -> None:
+    session = SandboxSession(
+        container_id="abc",
+        port=8080,
+        base_url="http://localhost:8080",
+    )
+    assert session.container_id == "abc"
+    assert session.port == 8080
+    assert session.base_url == "http://localhost:8080"
+
+
+class TestEgressPolicy:
+    def test_default_allowlist_includes_llm_endpoints(self) -> None:
+        policy = EgressPolicy()
+        assert policy.is_allowed("https://api.openai.com/v1/chat")
+        assert policy.is_allowed("https://api.anthropic.com/v1/messages")
+        assert policy.is_allowed("https://api.openrouter.ai/chat")
+
+    def test_default_allowlist_includes_package_registries(self) -> None:
+        policy = EgressPolicy()
+        assert policy.is_allowed("https://pypi.org/simple/")
+        assert policy.is_allowed("https://files.pythonhosted.org/packages/")
+        assert policy.is_allowed("https://registry.npmjs.org/")
+
+    def test_default_allowlist_includes_mcp_endpoints(self) -> None:
+        policy = EgressPolicy()
+        assert policy.is_allowed("https://api.context7.com/v1/query")
+        assert policy.is_allowed("https://context7.com/")
+
+    def test_arbitrary_internet_is_blocked(self) -> None:
+        policy = EgressPolicy()
+        assert not policy.is_allowed("https://example.com")
+        assert not policy.is_allowed("https://google.com")
+        assert not policy.is_allowed("https://github.com/")
+
+    def test_git_remotes_are_blocked(self) -> None:
+        policy = EgressPolicy()
+        assert not policy.is_allowed("https://github.com/user/repo.git")
+        assert not policy.is_allowed("git@github.com:user/repo.git")
+
+    def test_check_raises_for_blocked_destination(self) -> None:
+        policy = EgressPolicy()
+        with pytest.raises(EgressBlockedError) as exc:
+            policy.check("https://example.com")
+        assert "blocked egress" in str(exc.value)
+        assert exc.value.destination == "https://example.com"
+
+    def test_check_passes_for_allowed_destination(self) -> None:
+        policy = EgressPolicy()
+        policy.check("https://api.openai.com/v1/chat")  # no error
+
+    def test_logs_allowlist_on_startup(self, caplog: pytest.LogCaptureFixture) -> None:
+        import logging
+
+        caplog.set_level(logging.INFO)
+        allowed = ["custom.example.com"]
+        EgressPolicy(allowlist=allowed)
+        assert "egress allowlist" in caplog.text
+        assert "custom.example.com" in caplog.text
+
+    def test_custom_allowlist(self) -> None:
+        policy = EgressPolicy(allowlist=["my-internal-api.com"])
+        assert policy.is_allowed("https://my-internal-api.com/data")
+        assert not policy.is_allowed("https://api.openai.com")
+
+    def test_default_allowlist_constant_not_mutable(self) -> None:
+        assert "api.openai.com" in DEFAULT_ALLOWLIST
+
+
+class TestDockerSandbox:
+    """Tests for DockerSandbox — uses mocked docker-py."""
+
+    @pytest.fixture
+    def sandbox_config(self) -> SandboxConfig:
+        return SandboxConfig(
+            image="test-image:latest",
+            workspace_path="/tmp/workspace",
+            skills_path="/tmp/skills",
+            runtime="",
+            env={"OPENCODE_PORT": "8080"},
+            timeout_seconds=60,
+            mem_limit="256m",
+            cpu_count=1,
+        )
+
+    @pytest.fixture
+    def mock_docker_client(self) -> MagicMock:
+        with patch("docker.DockerClient") as MockDockerClient:
+            client_instance = MockDockerClient.return_value
+            client_instance.api.create_host_config.return_value = {}
+            yield client_instance
+
+    async def test_create_returns_session_with_container_id(
+        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+    ) -> None:
+        fake_container = MagicMock()
+        fake_container.id = "abc123"
+        mock_docker_client.containers.create.return_value = fake_container
+
+        sandbox = DockerSandbox()
+        session = await sandbox.create(sandbox_config)
+
+        assert session.container_id == "abc123"
+
+    async def test_is_running_returns_true_for_running_container(
+        self, mock_docker_client: MagicMock
+    ) -> None:
+        fake_container = MagicMock()
+        fake_container.status = "running"
+        mock_docker_client.containers.get.return_value = fake_container
+
+        sandbox = DockerSandbox()
+        result = await sandbox.is_running("abc123")
+
+        assert result is True
+
+    async def test_is_running_returns_false_for_missing_container(
+        self, mock_docker_client: MagicMock
+    ) -> None:
+        import docker
+
+        mock_docker_client.containers.get.side_effect = docker.errors.NotFound(
+            "not found", response=MagicMock(status_code=404)
+        )
+
+        sandbox = DockerSandbox()
+        result = await sandbox.is_running("abc123")
+
+        assert result is False
+
+    async def test_destroy_removes_container(
+        self, mock_docker_client: MagicMock
+    ) -> None:
+        fake_container = MagicMock()
+        mock_docker_client.containers.get.return_value = fake_container
+
+        sandbox = DockerSandbox()
+        await sandbox.destroy("abc123")
+
+        fake_container.remove.assert_called_once_with(force=True, v=True)
+
+    async def test_destroy_ignores_missing_container(
+        self, mock_docker_client: MagicMock
+    ) -> None:
+        import docker
+
+        mock_docker_client.containers.get.side_effect = docker.errors.NotFound(
+            "not found", response=MagicMock(status_code=404)
+        )
+
+        sandbox = DockerSandbox()
+        await sandbox.destroy("abc123")
+
+    async def test_list_containers_filters_by_label(
+        self, mock_docker_client: MagicMock
+    ) -> None:
+        c1, c2 = MagicMock(), MagicMock()
+        c1.id = "id1"
+        c2.id = "id2"
+        mock_docker_client.containers.list.return_value = [c1, c2]
+
+        sandbox = DockerSandbox()
+        result = await sandbox.list_containers({"image": "test-image:latest"})
+
+        assert result == ["id1", "id2"]
+        mock_docker_client.containers.list.assert_called_once_with(
+            filters={"label": {"bp_agents.sandbox.image": "test-image:latest"}}
+        )
+
+    async def test_create_sets_env_with_proxy_defaults(
+        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+    ) -> None:
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        mock_docker_client.containers.create.return_value = fake_container
+
+        sandbox = DockerSandbox()
+        await sandbox.create(sandbox_config)
+
+        _call_env = mock_docker_client.containers.create.call_args[1].get(
+            "environment", {}
+        )
+        assert _call_env["HTTP_PROXY"] == "http://egress-proxy:8080"
+        assert _call_env["HTTPS_PROXY"] == "http://egress-proxy:8080"
+        assert _call_env["NO_PROXY"] == "localhost,127.0.0.1"
+        assert _call_env["OPENCODE_PORT"] == "8080"
+
+    async def test_create_passes_runtime_when_runsc(
+        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+    ) -> None:
+        sandbox_config.runtime = "runsc"
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        mock_docker_client.containers.create.return_value = fake_container
+
+        sandbox = DockerSandbox()
+        await sandbox.create(sandbox_config)
+
+        assert (
+            mock_docker_client.containers.create.call_args[1].get("runtime") == "runsc"
+        )
+
+    async def test_create_omits_runtime_when_empty(
+        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+    ) -> None:
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        mock_docker_client.containers.create.return_value = fake_container
+
+        sandbox = DockerSandbox()
+        await sandbox.create(sandbox_config)
+
+        assert "runtime" not in mock_docker_client.containers.create.call_args[1]
+
+    async def test_create_sets_binds_and_resources(
+        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+    ) -> None:
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        mock_docker_client.containers.create.return_value = fake_container
+
+        sandbox = DockerSandbox()
+        await sandbox.create(sandbox_config)
+
+        mock_docker_client.api.create_host_config.assert_called_once()
+        hc_args = mock_docker_client.api.create_host_config.call_args[1]
+        assert hc_args["mem_limit"] == "256m"
+        assert hc_args["nano_cpus"] == int(1 * 1e9)
+        assert any("/tmp/workspace:/data/workspace:ro" in b for b in hc_args["binds"])
+        assert any("/tmp/skills:/data/skills:ro" in b for b in hc_args["binds"])
+
+    async def test_create_sets_labels(
+        self, sandbox_config: SandboxConfig, mock_docker_client: MagicMock
+    ) -> None:
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        mock_docker_client.containers.create.return_value = fake_container
+
+        sandbox = DockerSandbox()
+        await sandbox.create(sandbox_config)
+
+        labels = mock_docker_client.containers.create.call_args[1].get("labels", {})
+        assert labels["bp_agents.sandbox.image"] == "test-image:latest"
+        assert "bp_agents.sandbox.created" in labels
