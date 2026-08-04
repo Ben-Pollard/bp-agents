@@ -36,6 +36,17 @@ def test_sandbox_config_defaults() -> None:
     assert config.timeout_seconds == 300
     assert config.mem_limit == "512m"
     assert config.cpu_count == 2
+    assert config.network == "bp_agents"
+
+
+def test_sandbox_config_custom_network() -> None:
+    config = SandboxConfig(
+        image="img",
+        workspace_path="/w",
+        skills_path="/s",
+        network="custom_net",
+    )
+    assert config.network == "custom_net"
 
 
 def test_sandbox_session_fields() -> None:
@@ -98,10 +109,36 @@ class TestEgressPolicy:
         assert "egress allowlist" in caplog.text
         assert "custom.example.com" in caplog.text
 
+    def test_log_allowlist_method(self, caplog: pytest.LogCaptureFixture) -> None:
+        import logging
+
+        caplog.set_level(logging.INFO)
+        policy = EgressPolicy(allowlist=["test.example.com"])
+        caplog.clear()
+        policy.log_allowlist()
+        assert "egress allowlist" in caplog.text
+        assert "test.example.com" in caplog.text
+
     def test_custom_allowlist(self) -> None:
         policy = EgressPolicy(allowlist=["my-internal-api.com"])
         assert policy.is_allowed("https://my-internal-api.com/data")
         assert not policy.is_allowed("https://api.openai.com")
+
+    def test_subdomain_suffix_bypass_is_blocked(self) -> None:
+        policy = EgressPolicy()
+        assert not policy.is_allowed("https://evil-pypi.org.malicious.com")
+        assert not policy.is_allowed("https://pypi.org.malicious.com")
+        assert not policy.is_allowed("https://notpypi.org")
+
+    def test_subdomain_of_allowed_host_is_allowed(self) -> None:
+        policy = EgressPolicy()
+        assert policy.is_allowed("https://sub.pypi.org/simple/")
+        assert policy.is_allowed("https://api.openai.com/v1/chat")
+
+    def test_non_url_destination_is_blocked(self) -> None:
+        policy = EgressPolicy()
+        assert not policy.is_allowed("not a url")
+        assert not policy.is_allowed("")
 
     def test_default_allowlist_constant_not_mutable(self) -> None:
         assert "api.openai.com" in DEFAULT_ALLOWLIST
@@ -132,6 +169,16 @@ class TestDockerSandbox:
     @pytest.fixture
     def sandbox(self, mock_docker_client: MagicMock) -> DockerSandbox:
         return DockerSandbox(docker_client=mock_docker_client)
+
+    @pytest.fixture
+    def sandbox_config_with_network(self) -> SandboxConfig:
+        return SandboxConfig(
+            image="test-image:latest",
+            workspace_path="/tmp/workspace",
+            skills_path="/tmp/skills",
+            runtime="",
+            network="my-custom-network",
+        )
 
     async def test_create_returns_session_with_container_id(
         self,
@@ -350,3 +397,96 @@ class TestDockerSandbox:
         labels = mock_docker_client.containers.create.call_args[1].get("labels", {})
         assert labels["bp_agents.sandbox.image"] == "test-image:latest"
         assert "bp_agents.sandbox.created" in labels
+
+    async def test_create_uses_config_network(
+        self,
+        sandbox_config_with_network: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
+    ) -> None:
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        mock_docker_client.containers.create.return_value = fake_container
+
+        await sandbox.create(sandbox_config_with_network)
+
+        hc_args = mock_docker_client.api.create_host_config.call_args[1]
+        assert hc_args["network_mode"] == "my-custom-network"
+
+    async def test_create_passes_ports_to_create(
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
+    ) -> None:
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        mock_docker_client.containers.create.return_value = fake_container
+
+        await sandbox.create(sandbox_config)
+
+        ports = mock_docker_client.containers.create.call_args[1].get("ports", [])
+        assert 8080 in ports
+
+    async def test_create_passes_port_bindings_to_host_config(
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
+    ) -> None:
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        mock_docker_client.containers.create.return_value = fake_container
+
+        await sandbox.create(sandbox_config)
+
+        hc_args = mock_docker_client.api.create_host_config.call_args[1]
+        assert "port_bindings" in hc_args
+        assert hc_args["port_bindings"] == {8080: None}
+
+    async def test_create_extracts_port_from_container(
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
+    ) -> None:
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        fake_container.attrs = {
+            "NetworkSettings": {
+                "Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "32768"}]}
+            }
+        }
+        mock_docker_client.containers.create.return_value = fake_container
+
+        session = await sandbox.create(sandbox_config)
+
+        assert session.port == 32768
+        assert session.base_url == "http://localhost:32768"
+
+    async def test_create_falls_back_to_default_port(
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
+    ) -> None:
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        fake_container.attrs = {}
+        mock_docker_client.containers.create.return_value = fake_container
+
+        session = await sandbox.create(sandbox_config)
+
+        assert session.port == 8080
+        assert session.base_url == "http://localhost:8080"
+
+    async def test_accepts_egress_policy(self, mock_docker_client: MagicMock) -> None:
+        policy = EgressPolicy(allowlist=["custom-only.com"])
+        sandbox = DockerSandbox(docker_client=mock_docker_client, egress_policy=policy)
+        assert sandbox._egress_policy is policy
+
+    async def test_default_egress_policy_created(
+        self, mock_docker_client: MagicMock
+    ) -> None:
+        sandbox = DockerSandbox(docker_client=mock_docker_client)
+        assert isinstance(sandbox._egress_policy, EgressPolicy)

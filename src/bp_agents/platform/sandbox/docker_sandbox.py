@@ -6,6 +6,7 @@ from docker.models.containers import Container
 
 from bp_agents.platform.sandbox.base import Sandbox
 from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
+from bp_agents.platform.sandbox.egress import EgressPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,11 @@ class DockerSandbox(Sandbox):
         self,
         docker_url: str = "unix://var/run/docker.sock",
         docker_client: docker.DockerClient | None = None,
+        egress_policy: EgressPolicy | None = None,
     ):
         self._client = docker_client or docker.DockerClient(base_url=docker_url)
+        self._egress_policy = egress_policy or EgressPolicy()
+        self._egress_policy.log_allowlist()
 
     async def create(self, config: SandboxConfig) -> SandboxSession:
         env = dict(config.env)
@@ -42,7 +46,8 @@ class DockerSandbox(Sandbox):
             ],
             mem_limit=config.mem_limit,
             nano_cpus=int(config.cpu_count * 1e9),
-            network_mode="bp_agents",
+            network_mode=config.network,
+            port_bindings={8080: None},
         )
 
         create_kwargs: dict = dict(
@@ -52,6 +57,7 @@ class DockerSandbox(Sandbox):
             host_config=host_config,
             labels=labels,
             detach=True,
+            ports=[8080],
         )
 
         if config.runtime == "runsc":
@@ -72,7 +78,19 @@ class DockerSandbox(Sandbox):
 
         # Inspect to find exposed port
         container.reload()
-        port = 8080  # default opencode serve port
+        host_port = None
+        try:
+            ports_dict = (
+                container.attrs.get("NetworkSettings", {}).get("Ports", {}) or {}
+            )
+            if isinstance(ports_dict, dict):
+                for bindings in ports_dict.values():
+                    if isinstance(bindings, list) and bindings:
+                        host_port = int(bindings[0].get("HostPort", 8080))
+                        break
+        except Exception:
+            pass
+        port = host_port or 8080
         base_url = f"http://localhost:{port}"
 
         return SandboxSession(

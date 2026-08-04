@@ -1,49 +1,49 @@
 {
-  "spec_compliance": false,
+  "spec_compliance": true,
   "code_quality": {
-    "deep-modules": true,
-    "interface-design": true,
-    "refactoring": true,
-    "declarative-over-procedural": true,
+    "deep-modules.md": true,
+    "interface-design.md": true,
+    "refactoring.md": true,
+    "declarative-over-procedural.md": true,
     "SOLID": true,
     "DRY": true,
     "YAGNI": true
   },
   "test_quality": {
-    "deep-modules": true,
-    "interface-design": true,
-    "mocking": false
+    "deep-modules.md": true,
+    "interface-design.md": true,
+    "mocking.md": true
   },
   "operational": false,
   "violations": [
     {
-      "principle": "Spec Compliance",
-      "file": "src/bp_agents/platform/sandbox/docker_sandbox.py:20",
-      "issue": "Missing fallback to hardened plain Docker when gVisor unavailable. AC #8 requires: 'Fallback to hardened plain Docker works if gVisor unavailable.' No try/except exists around runtime='runsc' — container creation will fail with no fallback path."
+      "principle": "Security: URL substring matching bypasses egress policy",
+      "file": "src/bp_agents/platform/sandbox/egress.py:27",
+      "issue": "EgressPolicy.is_allowed uses `any(allowed in destination for allowed in self.allowlist)` which is vulnerable to subdomain bypass. A domain like `evil-pypi.org.malicious.com` would match the `pypi.org` allowlist entry because `pypi.org` is a substring of the malicious domain. Must parse URL hostname and match against suffix (e.g. `urlparse(url).hostname` + `endswith('.pypi.org')` or exact match). This is a security-critical bypass of the egress policy."
     },
     {
-      "principle": "Spec Compliance — Integration Test Gap",
-      "file": "tests/unit/platform/test_sandbox.py:1",
-      "issue": "No integration test for real Docker + egress proxy. Issue calls for 'Sandbox can reach PyPI' and 'Sandbox cannot reach arbitrary internet' — these require a real container. Unit tests mock docker-py entirely, so blocked-egress-logged-to-stdout behavior is never exercised against a live proxy."
+      "principle": "Hardcoded network name not configurable",
+      "file": "src/bp_agents/platform/sandbox/docker_sandbox.py:45",
+      "issue": "network_mode='bp_agents' is hardcoded in create(). If the Docker network differs across environments, this will fail. Should be configurable via SandboxConfig (analogous to how proxy vars were made configurable in the previous review fix). Regression — same class of issue as the original hardcoded proxy vars."
     },
     {
-      "principle": "Mocking at internal seam",
-      "file": "tests/unit/platform/test_sandbox.py:127",
-      "issue": "Tests mock `docker.DockerClient` (an internal collaborator) instead of injecting a sandbox interface. Tests will break on refactor. Per mocking.md: 'Don't mock your own classes/modules' and 'Don't mock internal collaborators'. The DockerSandbox should accept an optional client so tests inject a real mock or test double at the boundary."
+      "principle": "Port is hardcoded, never extracted from container",
+      "file": "src/bp_agents/platform/sandbox/docker_sandbox.py:75",
+      "issue": "port = 8080 is hardcoded and never read from the container's port bindings. container.reload() is called but the result is not inspected. The port should be derived from the host config port bindings or the container's network settings."
     },
     {
-      "principle": "Filter injection of env vars unclear",
-      "file": "src/bp_agents/platform/sandbox/docker_sandbox.py:25",
-      "issue": "HTTP_PROXY/HTTPS_PROXY env vars hardcoded in create(). If egress-proxy host changes, proxy URLs must be changed in code. Should be configurable via SandboxConfig or a separate network config."
+      "principle": "EgressPolicy is never wired into sandbox",
+      "file": "src/bp_agents/platform/sandbox/egress.py:21",
+      "issue": "EgressPolicy is a standalone module not instantiated or used by DockerSandbox. The AC says 'blocked egress logged to stdout' — this logging happens in EgressPolicy.check() but nothing calls it. The sandbox only sets proxy env vars and delegates enforcement entirely to the external proxy. If the proxy is not deployed, egress is unrestricted. Either integrate EgressPolicy into the sandbox or document that it's the proxy's responsibility."
     }
   ],
   "review_notes": [
-    "25/25 unit tests pass, ruff linting clean",
-    "AC #1-#7 covered by unit tests or are egress-policy behavioral tests",
-    "AC #8 (fallback to hardened Docker) is unimplemented — critical gap",
-    "No integration test for live Docker container behavior (AC #2, #3 need real container)",
-    "DockerSandbox tests mock docker-py at internal seam, not at system boundary",
-    "Proxy URLs hardcoded rather than configurable"
+    "All 28 unit tests pass",
+    "Previous review issues 1-4 are all addressed: runsc fallback, dependency injection for docker_client, configurable proxy vars, testable code design",
+    "Mocking is at the correct boundary (docker.DockerClient is an external SDK, not an internal collaborator)",
+    "EgressPolicy coverage is thorough (9 tests covering all methods, edge cases, logging, and custom allowlists)",
+    "DockerSandbox tests cover create, is_running, destroy, list_containers, env construction, runtime selection, fallback, binds/resources, and labels",
+    "No integration test exists for real Docker daemon; the previous review accepted this trade-off"
   ],
   "action": "changes_requested"
 }
