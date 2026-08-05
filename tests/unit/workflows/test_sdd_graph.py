@@ -113,7 +113,8 @@ def test_build_feature_pipeline_compiles() -> None:
     assert app is not None
 
 
-def test_feature_pipeline_processes_tickets() -> None:
+@pytest.mark.asyncio
+async def test_feature_pipeline_processes_tickets() -> None:
     app = build_feature_pipeline()
     ticket = Ticket(
         id="TICK-1",
@@ -133,5 +134,5 @@ def test_feature_pipeline_processes_tickets() -> None:
         "blocked_reason": None,
     }
     config = {"configurable": {"thread_id": "feat-1"}}
-    result = app.invoke(initial, config)
+    result = await app.ainvoke(initial, config)
     assert result["ticket_states"]["TICK-1"]["status"] == "done"

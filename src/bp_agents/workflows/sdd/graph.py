@@ -1,14 +1,18 @@
 import functools
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 from bp_agents.workflows.sdd.state import (
     SDDFeatureState,
     TicketPipelineState,
 )
+
+if TYPE_CHECKING:
+    from bp_agents.platform.tracker import Tracker
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +35,22 @@ def _advance(state: TicketPipelineState, to: str) -> dict:
     return {"status": to}
 
 
-def _node(target: str):
-    @functools.wraps(lambda: None)
-    def node_fn(state: TicketPipelineState) -> dict:
-        return _advance(state, target)
+def _node(target: str, tracker: "Tracker | None" = None):
+    if tracker is not None:
+
+        @functools.wraps(lambda: None)
+        async def node_fn(state: TicketPipelineState) -> dict:
+            result = _advance(state, target)
+            await tracker.update_state(
+                state["ticket_id"], target, state.get("project", "unknown")
+            )
+            return result
+
+    else:
+
+        @functools.wraps(lambda: None)
+        def node_fn(state: TicketPipelineState) -> dict:
+            return _advance(state, target)
 
     node_fn.__name__ = f"node_{target}"
     return node_fn
@@ -70,22 +86,23 @@ def route_verify(state: TicketPipelineState) -> str:
 
 
 def build_ticket_pipeline(
-    checkpointer: SqliteSaver | None = None,
+    checkpointer: AsyncSqliteSaver | None = None,
+    tracker: "Tracker | None" = None,
 ):
     builder = StateGraph(TicketPipelineState)
 
-    builder.add_node("implement", _node("implementing"))
-    builder.add_node("implement_complete", _node("awaiting_review"))
-    builder.add_node("review", _node("reviewing"))
-    builder.add_node("approve_review", _node("awaiting_verification"))
-    builder.add_node("request_changes", _node("awaiting_revision"))
-    builder.add_node("revise", _node("revising"))
-    builder.add_node("revise_complete", _node("awaiting_verification"))
-    builder.add_node("verify", _node("verifying"))
-    builder.add_node("verification_pass", _node("awaiting_approval"))
-    builder.add_node("verification_fail", _node("awaiting_revision"))
-    builder.add_node("approve_final", _node("done"))
-    builder.add_node("block", _node("blocked"))
+    builder.add_node("implement", _node("implementing", tracker))
+    builder.add_node("implement_complete", _node("awaiting_review", tracker))
+    builder.add_node("review", _node("reviewing", tracker))
+    builder.add_node("approve_review", _node("awaiting_verification", tracker))
+    builder.add_node("request_changes", _node("awaiting_revision", tracker))
+    builder.add_node("revise", _node("revising", tracker))
+    builder.add_node("revise_complete", _node("awaiting_verification", tracker))
+    builder.add_node("verify", _node("verifying", tracker))
+    builder.add_node("verification_pass", _node("awaiting_approval", tracker))
+    builder.add_node("verification_fail", _node("awaiting_revision", tracker))
+    builder.add_node("approve_final", _node("done", tracker))
+    builder.add_node("block", _node("blocked", tracker))
 
     builder.add_conditional_edges(START, route_ticket)
     builder.add_conditional_edges("implement", route_ticket)
@@ -105,13 +122,14 @@ def build_ticket_pipeline(
 
 
 def build_feature_pipeline(
-    checkpointer: SqliteSaver | None = None,
+    checkpointer: AsyncSqliteSaver | None = None,
+    tracker: "Tracker | None" = None,
 ):
     builder = StateGraph(SDDFeatureState)
 
-    ticket_pipeline = build_ticket_pipeline(checkpointer=checkpointer)
+    ticket_pipeline = build_ticket_pipeline(checkpointer=checkpointer, tracker=tracker)
 
-    def process_tickets(state: SDDFeatureState) -> dict:
+    async def process_tickets(state: SDDFeatureState) -> dict:
         updated_states: dict[str, TicketPipelineState] = {}
         for ticket in state["tickets"]:
             tid = ticket.id
@@ -131,7 +149,7 @@ def build_feature_pipeline(
             else:
                 ticket_state = state["ticket_states"][tid]
             config = {"configurable": {"thread_id": tid}}
-            result = ticket_pipeline.invoke(ticket_state, config)
+            result = await ticket_pipeline.ainvoke(ticket_state, config)
             updated_states[tid] = result
         return {"ticket_states": updated_states}
 

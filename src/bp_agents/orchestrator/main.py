@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 import httpx
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
@@ -80,7 +80,7 @@ async def _poll_loop(tracker: Tracker, pipeline: Any) -> None:
                 config = {
                     "configurable": {"thread_id": ticket["id"]},
                 }
-                pipeline.invoke(state, config)
+                await pipeline.ainvoke(state, config)
         except Exception:
             logger.exception("ticket discovery failed")
         await asyncio.sleep(POLL_INTERVAL)
@@ -104,8 +104,8 @@ async def main_async(tracker: Tracker | None = None) -> None:
 
     logger.info("orchestrator ready")
 
-    with SqliteSaver.from_conn_string(PIPELINE_DB_PATH) as checkpointer:
-        pipeline = build_ticket_pipeline(checkpointer=checkpointer)
+    async with AsyncSqliteSaver.from_conn_string(PIPELINE_DB_PATH) as checkpointer:
+        pipeline = build_ticket_pipeline(checkpointer=checkpointer, tracker=tracker)
         await _poll_loop(tracker, pipeline)
 
 

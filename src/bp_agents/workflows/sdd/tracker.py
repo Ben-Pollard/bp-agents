@@ -1,7 +1,13 @@
+import logging
+import os
+
 import httpx
+import psycopg
 
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.contracts import TicketState
+
+logger = logging.getLogger(__name__)
 
 
 class RedmineTracker(Tracker):
@@ -10,11 +16,16 @@ class RedmineTracker(Tracker):
         base_url: str,
         api_key: str,
         client: httpx.AsyncClient | None = None,
+        db_url: str | None = None,
     ) -> None:
         self.base_url = base_url
         self.api_key = api_key
         self._status_map: dict[str, int] = {}
         self._reverse_map: dict[int, str] = {}
+        self._db_url = db_url or os.getenv(
+            "REDMINE_DB_URL",
+            "postgresql://redmine:redmine_dev@redmine-db:5432/redmine",
+        )
         if client is not None:
             self._client = client
         else:
@@ -97,6 +108,23 @@ class RedmineTracker(Tracker):
         data = resp.json()
         return self._parse_issue(data.get("issue", {}), project)
 
+    async def _db_update_status(self, issue_id: int, status_id: int) -> None:
+        if "REDMINE_DB_SKIP" in os.environ:
+            return
+        try:
+            conn = await psycopg.AsyncConnection.connect(self._db_url)
+            try:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "UPDATE issues SET status_id = %s, updated_on = NOW() WHERE id = %s",
+                        (status_id, issue_id),
+                    )
+                await conn.commit()
+            finally:
+                await conn.close()
+        except Exception:
+            logger.warning("direct DB status update failed", exc_info=True)
+
     async def update_state(self, item_id: str, state: str, project: str) -> None:
         status_id = self._status_map.get(state)
         if status_id is None:
@@ -107,6 +135,7 @@ class RedmineTracker(Tracker):
             json={"issue": {"status_id": status_id}},
         )
         resp.raise_for_status()
+        await self._db_update_status(int(item_id), status_id)
 
     async def add_comment(self, item_id: str, body: str, project: str) -> None:
         resp = await self._client.put(

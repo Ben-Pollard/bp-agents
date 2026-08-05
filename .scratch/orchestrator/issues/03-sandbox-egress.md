@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: in-progress
 
 # 03 — Sandbox adapter + Egress proxy
 
@@ -11,7 +11,7 @@ Status: ready-for-agent
 
 ## What to Build
 
-Docker sandbox adapter (`platform.sandbox`) using `docker-py` with gVisor (`--runtime=runsc`) for agent isolation. Ephemeral containers per dispatch, workspace bind-mounted from host. Egress proxy (mitmproxy) in Compose enforcing an allowlist: LLM API endpoints, package registries, MCP endpoints allowed; arbitrary internet and git remotes blocked. Blocked egress attempts logged to stdout. Git commands fail in sandbox.
+gVisor sandbox adapter (`platform.sandbox`) using `docker-py` as the container runtime interface (`--runtime=runsc`) for agent isolation. Ephemeral containers per dispatch, workspace bind-mounted from host. Egress proxy (mitmproxy) in Compose enforcing an allowlist: LLM API endpoints, package registries, MCP endpoints allowed; arbitrary internet and git remotes blocked. Blocked egress attempts logged to stdout. Git commands fail in sandbox.
 
 No pipeline integration — create/destroy sandboxes programmatically, verify isolation and egress policy.
 
@@ -50,7 +50,7 @@ Blocked connection attempts are logged as observable events (destination, timest
 
 ### Architectural Constraints
 
-**Module: `platform.sandbox`** — Docker/gVisor adapter
+**Module: `platform.sandbox`** — gVisor adapter
 
 ```python
 from abc import ABC, abstractmethod
@@ -82,20 +82,20 @@ class Sandbox(ABC):
     @abstractmethod
     async def list_containers(self, label_filter: dict[str, str]) -> list[str]: ...
 
-class DockerSandbox(Sandbox):
-    """docker-py adapter with gVisor runtime support."""
+class GVisorSandbox(Sandbox):
+    """gVisor sandbox using docker-py as the container runtime."""
     def __init__(self, docker_url: str = "unix://var/run/docker.sock"): ...
 ```
 
 **Decisions made** (from gap analysis):
 
-- **ADR-0002**: gVisor/Docker sandbox with ephemeral containers per dispatch. `docker-py` adapter, `--runtime=runsc`. Fallback to hardened plain Docker if gVisor compatibility fails smoke test.
+- **ADR-0002**: gVisor sandbox with ephemeral containers per dispatch. `docker-py` adapter, `--runtime=runsc`.
 - Workspace is host-persistent, bind-mounted into ephemeral sandbox containers per dispatch. Orchestrator owns all git state.
 - Skills are copied from bp-agents `.agents/skills/` into workspace before dispatch. Skills retain `if git is available` git steps — git is unavailable in sandbox per egress policy.
 
 **Open Risks** (from gap analysis):
 
-- **gVisor compatibility with opencode** — opencode's tool loop (bash, file writes, LSP) may hit syscall gaps. Smoke test before committing. Fallback: hardened plain Docker.
+- **gVisor compatibility with opencode** — opencode's tool loop (bash, file writes, LSP) may hit syscall gaps. Do not implement fallback.
 - **Skill git steps in sandbox** — TDD/revision skills run `git add`/`git commit`. If git is blocked (AC-23) but still partially installed, edge cases may surface (git hangs vs clean error).
 
 ### Testing Decisions
@@ -109,14 +109,13 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 
 ## This Ticket's Acceptance Criteria
 
-- [ ] `DockerSandbox.create(config)` returns a running container with gVisor runtime (`runsc`)
+- [ ] `GVisorSandbox.create(config)` returns a running container with gVisor runtime (`runsc`)
 - [ ] Sandbox can reach PyPI (package registry) — agent tool call `pip install` succeeds through proxy
 - [ ] Sandbox cannot reach arbitrary internet — `curl https://example.com` fails; blocked egress logged to stdout
 - [ ] Git commands (`git status`, `git add`, etc.) fail inside sandbox with a clear error
-- [ ] `DockerSandbox.destroy(container_id)` removes container
-- [ ] `DockerSandbox.list_containers(label_filter)` finds containers by label
+- [ ] `GVisorSandbox.destroy(container_id)` removes container
+- [ ] `GVisorSandbox.list_containers(label_filter)` finds containers by label
 - [ ] Egress allowlist is configurable and logged on startup
-- [ ] Fallback to hardened plain Docker works if gVisor unavailable
 
 ## Blocked by
 
