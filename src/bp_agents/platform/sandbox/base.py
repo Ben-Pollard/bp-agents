@@ -15,3 +15,6 @@ class Sandbox(ABC):
 
     @abstractmethod
     async def list_containers(self, label_filter: dict[str, str]) -> list[str]: ...
+
+    @abstractmethod
+    async def exec_run(self, container_id: str, cmd: str) -> tuple[int, bytes]: ...

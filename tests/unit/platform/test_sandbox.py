@@ -180,21 +180,24 @@ class TestDockerSandbox:
             network="my-custom-network",
         )
 
-    def test_git_commands_fail_in_sandbox(self, mock_docker_client: MagicMock) -> None:
+    async def test_git_commands_fail_in_sandbox(
+        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
+    ) -> None:
         """Git is not available in the sandbox image.
 
         AC-23: Any attempt by an agent to run a git command SHALL fail.
-        The sandbox image deliberately excludes git. If an agent attempts
-        a git command, the container exec fails.
+        The sandbox image deliberately excludes git. DockerSandbox.exec_run
+        surfaces the container-level exec failure.
         """
         fake_container = MagicMock()
         fake_container.exec_run.return_value = (1, b"git: command not found")
         mock_docker_client.containers.get.return_value = fake_container
 
-        container = mock_docker_client.containers.get("sandbox-1")
-        exit_code, output = container.exec_run("git status")
+        exit_code, output = await sandbox.exec_run("sandbox-1", "git status")
         assert exit_code != 0
         assert b"command not found" in output
+        mock_docker_client.containers.get.assert_called_once_with("sandbox-1")
+        fake_container.exec_run.assert_called_once_with("git status")
 
     async def test_create_returns_session_with_container_id(
         self,

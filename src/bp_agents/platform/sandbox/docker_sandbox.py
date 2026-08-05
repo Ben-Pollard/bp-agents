@@ -135,5 +135,10 @@ class DockerSandbox(Sandbox):
         containers = self._client.containers.list(filters={"label": filters})
         return [c.id for c in containers]
 
+    async def exec_run(self, container_id: str, cmd: str) -> tuple[int, bytes]:
+        container = self._client.containers.get(container_id)
+        result = container.exec_run(cmd)
+        return result  # type: ignore[return-value]
+
 
 GVisorSandbox = DockerSandbox

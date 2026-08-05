@@ -5,22 +5,25 @@ from unittest.mock import MagicMock
 
 import docker
 import pytest
+import yaml
 
 from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
 from bp_agents.platform.sandbox.egress import EgressBlockedError, EgressPolicy
 
 
-def _load_compose() -> str:
+def _load_compose() -> dict:
     root = Path(__file__).resolve().parents[2]
-    return (root / "docker-compose.yml").read_text()
+    return yaml.safe_load((root / "docker-compose.yml").read_text())
 
 
 def test_compose_egress_proxy_enforces_allowlist() -> None:
     """The mitmproxy egress proxy must be configured with --allow-hosts
     filters so arbitrary internet is not reachable (AC-21/AC-22)."""
     compose = _load_compose()
-    assert "--allow-hosts" in compose, "egress-proxy must enforce an allowlist"
+    command = compose["services"]["egress-proxy"]["command"]
+    command_str = " ".join(command) if isinstance(command, list) else command
+    assert "--allow-hosts" in command_str, "egress-proxy must enforce an allowlist"
 
 
 def test_compose_allowlist_covers_default_allowlist() -> None:
@@ -28,13 +31,15 @@ def test_compose_allowlist_covers_default_allowlist() -> None:
     the mitmproxy configuration, otherwise a permitted destination would be
     blocked by the proxy while the policy permits it."""
     compose = _load_compose()
+    command = compose["services"]["egress-proxy"]["command"]
+    command_str = " ".join(command) if isinstance(command, list) else command
     compose_hosts = set()
-    for line in compose.splitlines():
-        line = line.strip().rstrip("\\").strip()
-        if line.startswith("--allow-hosts"):
-            host = line.split(None, 1)[1]
-            host = host.replace("\\.", ".")
-            compose_hosts.add(host)
+    for token in command_str.split():
+        if token == "--allow-hosts":
+            continue
+        if token.startswith("--"):
+            continue
+        compose_hosts.add(token.replace("\\.", "."))
 
     default_hosts = set(EgressPolicy().allowlist)
     assert (

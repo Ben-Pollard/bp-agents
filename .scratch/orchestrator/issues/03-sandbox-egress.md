@@ -122,10 +122,3 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 - #01 Infrastructure + Contracts
 
 ## Outcome
-
-Implemented `platform.sandbox` module with DockerSandbox (docker-py adapter, gVisor runsc with fallback, configurable proxies/network/DI), EgressPolicy (hostname+suffix matching, configurable allowlist, logged on startup), and SandboxConfig/SandboxSession. 4 review rounds (3 code quality, 1 behavioural verification catch). 2 docker-py API bugs found and fixed by live verification (host_config kwarg, label filter format). All 8 ACs PASS, 60/60 tests pass, ruff clean.
-
-- Implement: `.scratch/orchestrator/outcomes/implement-outcome.json`
-- Review: `.scratch/orchestrator/outcomes/review-outcome.json`
-- Reduction: `.scratch/orchestrator/outcomes/reduction-outcome.json`
-- Verify: `.scratch/orchestrator/outcomes/verify-outcome.json`
