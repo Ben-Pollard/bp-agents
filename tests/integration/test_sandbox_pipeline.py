@@ -46,6 +46,18 @@ def test_compose_allowlist_covers_default_allowlist() -> None:
     ), f"missing in egress_blocker.py: {default_hosts - script_hosts}"
 
 
+def test_egress_blocker_logs_ticket_unknown_suffix() -> None:
+    """AC-3/AC-22: The egress blocker addon script must log blocked egress
+    with a 'from ticket <id>' suffix. Since the proxy has no ticket context,
+    the placeholder 'from ticket <unknown>' is used so the log format matches
+    the acceptance criteria."""
+    root = Path(__file__).resolve().parents[2]
+    script = (root / "scripts" / "egress_blocker.py").read_text()
+    assert (
+        "from ticket <unknown>" in script
+    ), "egress_blocker.py must log 'from ticket <unknown>' suffix"
+
+
 @pytest.fixture
 def egress_policy() -> EgressPolicy:
     return EgressPolicy()

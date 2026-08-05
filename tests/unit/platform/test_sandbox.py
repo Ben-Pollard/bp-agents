@@ -199,6 +199,27 @@ class TestDockerSandbox:
         mock_docker_client.containers.get.assert_called_once_with("sandbox-1")
         fake_container.exec_run.assert_called_once_with("git status")
 
+    async def test_exec_run_passes_shell_commands_with_redirects(
+        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
+    ) -> None:
+        """AC-2: exec_run must handle shell redirect syntax when wrapped in
+        sh -c. docker-py's exec_run splits the string via shlex.split and
+        passes tokens as positional args, so '2>&1' must be inside a shell
+        invocation, not as a direct argument to the target command.
+        """
+        fake_container = MagicMock()
+        fake_container.exec_run.return_value = (0, b"requests 2.32.0")
+        mock_docker_client.containers.get.return_value = fake_container
+
+        exit_code, output = await sandbox.exec_run(
+            "sandbox-1",
+            "sh -c 'pip install --dry-run requests 2>&1'",
+        )
+        assert exit_code == 0
+        fake_container.exec_run.assert_called_once_with(
+            "sh -c 'pip install --dry-run requests 2>&1'"
+        )
+
     async def test_create_returns_session_with_container_id(
         self,
         sandbox_config: SandboxConfig,

@@ -89,7 +89,7 @@ async def test_sandbox_can_reach_pypi_through_proxy() -> None:
     try:
         exit_code, output = await sandbox.exec_run(
             session.container_id,
-            "pip install --dry-run requests 2>&1",
+            "sh -c 'pip install --dry-run requests 2>&1'",
         )
         assert exit_code == 0, f"pip install failed: {output!r}"
     finally:

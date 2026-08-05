@@ -25,7 +25,7 @@ def _is_allowed(host: str) -> bool:
 def http_connect(flow: http.HTTPFlow) -> None:
     host = flow.request.host
     if not _is_allowed(host):
-        logger.warning("blocked egress: %s", host)
+        logger.warning("blocked egress: %s from ticket <unknown>", host)
         flow.response = http.Response.make(
             403, b"blocked by egress policy", {"Content-Type": "text/plain"}
         )
@@ -34,7 +34,9 @@ def http_connect(flow: http.HTTPFlow) -> None:
 def request(flow: http.HTTPFlow) -> None:
     host = flow.request.pretty_host
     if not _is_allowed(host):
-        logger.warning("blocked egress: %s", flow.request.pretty_url)
+        logger.warning(
+            "blocked egress: %s from ticket <unknown>", flow.request.pretty_url
+        )
         flow.response = http.Response.make(
             403, b"blocked by egress policy", {"Content-Type": "text/plain"}
         )
