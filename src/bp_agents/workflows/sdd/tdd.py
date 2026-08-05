@@ -7,6 +7,8 @@ import subprocess
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+import httpx
+
 from bp_agents.platform.agent_client import OpenCodeClient
 from bp_agents.platform.sandbox import Sandbox, SandboxConfig
 from bp_agents.workflows.sdd.contracts import TddOutput
@@ -116,9 +118,23 @@ class TddNode:
                 client = OpenCodeClient(session.base_url)
             try:
                 for attempt in range(1, self._max_retries + 1):
-                    oc_session = await client.create_session(agent="builder")
-                    await client.prompt(oc_session, json.dumps(input_contract))
-                    await client.wait(oc_session)
+                    try:
+                        oc_session = await client.create_session(agent="builder")
+                        await client.prompt(oc_session, json.dumps(input_contract))
+                        await client.wait(oc_session)
+                    except (
+                        httpx.ConnectError,
+                        httpx.RemoteProtocolError,
+                    ) as exc:
+                        logger.error(
+                            "ticket %s: sandbox unreachable: %s",
+                            ticket_id,
+                            exc,
+                        )
+                        return {
+                            "status": "blocked",
+                            "blocked_reason": f"sandbox unreachable: {exc}",
+                        }
 
                     try:
                         tdd_output = self._read_and_validate_outcome(

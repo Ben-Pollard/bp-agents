@@ -122,6 +122,7 @@ services:
       BP_SANDBOX_RUNTIME: ${BP_SANDBOX_RUNTIME:-runsc}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /home/user/projects/bp-skills:/home/user/projects/bp-skills:ro
       - ./workspaces:/data/workspaces
       - bp_env:/data/env
       - ./.agents:/app/.agents:ro
