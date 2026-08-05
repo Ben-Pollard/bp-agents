@@ -55,11 +55,14 @@ Or override with an absolute path in `.env`:
 echo "BP_SKILLS_PATH=/home/$(whoami)/projects/bp-agents/.agents/skills" >> .env
 ```
 
-### 4. Start the stack
+### 4. Build and start the stack
 
 ```bash
+docker compose build orchestrator
 docker compose up
 ```
+
+`docker compose build orchestrator` rebuilds the orchestrator container when source code changes. Skip this step if no orchestrator code has changed since the last build.
 
 This starts all services including the orchestrator. When the orchestrator finds a `BP_TARGET_REPO_PATH`, it wires the real TDD pipeline. Without it, the stub pipeline runs and blocks tickets with a clear reason.
 
