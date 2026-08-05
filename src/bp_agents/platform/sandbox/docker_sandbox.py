@@ -89,13 +89,11 @@ class DockerSandbox(Sandbox):
             container: Container = self._client.containers.create(**create_kwargs)
         except docker.errors.DockerException:
             if config.runtime == "runsc":
-                logger.warning(
-                    "runsc runtime unavailable, falling back to default runtime"
+                logger.error(
+                    "runsc runtime unavailable — gVisor isolation required by ADR-0002"
                 )
-                create_kwargs.pop("runtime", None)
-                container = self._client.containers.create(**create_kwargs)
-            else:
                 raise
+            raise
         container.start()
         return container
 

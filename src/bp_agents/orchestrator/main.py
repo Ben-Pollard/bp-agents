@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from bp_agents.platform.sandbox.egress import EgressPolicy
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
 from bp_agents.workflows.sdd.state import TicketPipelineState
@@ -91,6 +92,12 @@ async def main_async(tracker: Tracker | None = None) -> None:
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
     logger.info("orchestrator starting...")
+
+    egress_policy = EgressPolicy()
+    logger.info(
+        "egress allowlist on startup: %s",
+        egress_policy.allowlist,
+    )
 
     wait_for_dependency(f"{REDMINE_BASE_URL}/", "Redmine")
     wait_for_dependency(f"{EGRESS_PROXY_URL}/", "egress-proxy")

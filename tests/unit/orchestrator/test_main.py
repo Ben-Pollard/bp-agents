@@ -3,7 +3,11 @@ from unittest import mock
 import httpx
 import pytest
 
-from bp_agents.orchestrator.main import POLL_INTERVAL, main_async, wait_for_dependency
+from bp_agents.orchestrator.main import (
+    POLL_INTERVAL,
+    main_async,
+    wait_for_dependency,
+)
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.contracts import TicketState
 
@@ -87,7 +91,9 @@ class TestPollInterval:
 
 
 class TestMain:
-    def test_main_logs_ready(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_main_logs_ready_and_egress_allowlist(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         import asyncio
         import logging
 
@@ -107,6 +113,7 @@ class TestMain:
             records = [r.message for r in caplog.records]
             assert "orchestrator starting..." in records
             assert "orchestrator ready" in records
+            assert any("egress allowlist on startup" in r for r in records)
 
     def test_main_raises_when_dependency_fails(self) -> None:
         import asyncio

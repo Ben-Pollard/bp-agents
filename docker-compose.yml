@@ -17,7 +17,17 @@ services:
 
   egress-proxy:
     image: mitmproxy/mitmproxy:latest
-    command: mitmdump --listen-host 0.0.0.0 --listen-port 8080
+    command: >
+      mitmdump --listen-host 0.0.0.0 --listen-port 8080
+      --allow-hosts api\.openai\.com
+      --allow-hosts api\.anthropic\.com
+      --allow-hosts api\.openrouter\.ai
+      --allow-hosts pypi\.org
+      --allow-hosts files\.pythonhosted\.org
+      --allow-hosts pypi\.python\.org
+      --allow-hosts registry\.npmjs\.org
+      --allow-hosts context7\.com
+      --allow-hosts api\.context7\.com
     ports:
       - "8080:8080"
     networks:

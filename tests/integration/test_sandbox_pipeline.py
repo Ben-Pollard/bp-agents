@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import docker
+import pytest
+
+from bp_agents.platform.sandbox.config import SandboxConfig
+from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
+from bp_agents.platform.sandbox.egress import EgressBlockedError, EgressPolicy
+
+
+def _load_compose() -> str:
+    root = Path(__file__).resolve().parents[2]
+    return (root / "docker-compose.yml").read_text()
+
+
+def test_compose_egress_proxy_enforces_allowlist() -> None:
+    """The mitmproxy egress proxy must be configured with --allow-hosts
+    filters so arbitrary internet is not reachable (AC-21/AC-22)."""
+    compose = _load_compose()
+    assert "--allow-hosts" in compose, "egress-proxy must enforce an allowlist"
+
+
+def test_compose_allowlist_covers_default_allowlist() -> None:
+    """Every host in the EgressPolicy default allowlist must be present in
+    the mitmproxy configuration, otherwise a permitted destination would be
+    blocked by the proxy while the policy permits it."""
+    compose = _load_compose()
+    compose_hosts = set()
+    for line in compose.splitlines():
+        line = line.strip().rstrip("\\").strip()
+        if line.startswith("--allow-hosts"):
+            host = line.split(None, 1)[1]
+            host = host.replace("\\.", ".")
+            compose_hosts.add(host)
+
+    default_hosts = set(EgressPolicy().allowlist)
+    assert (
+        default_hosts <= compose_hosts
+    ), f"missing in compose allowlist: {default_hosts - compose_hosts}"
+
+
+@pytest.fixture
+def egress_policy() -> EgressPolicy:
+    return EgressPolicy()
+
+
+def test_policy_blocks_arbitrary_internet(
+    egress_policy: EgressPolicy,
+) -> None:
+    with pytest.raises(EgressBlockedError):
+        egress_policy.check("https://example.com", ticket_id="hello-1")
+
+
+def test_policy_permits_pypi_and_llm(
+    egress_policy: EgressPolicy,
+) -> None:
+    egress_policy.check("https://pypi.org/simple/", ticket_id="hello-1")
+    egress_policy.check("https://api.openai.com/v1/chat", ticket_id="hello-1")
+
+
+def test_sandbox_lifecycle_with_policy() -> None:
+    """Pipeline-level: create, is_running, list_containers, destroy with an
+    injected docker client, exercising the same path the orchestrator uses."""
+    client = MagicMock()
+    client.api.create_host_config.return_value = {}
+
+    container = MagicMock()
+    container.id = "sandbox-abc"
+    container.attrs = {}
+    client.containers.create.return_value = container
+
+    sandbox = DockerSandbox(docker_client=client, egress_policy=EgressPolicy())
+
+    config = SandboxConfig(
+        image="symphony-agent:latest",
+        workspace_path="/tmp/ws",
+        skills_path="/tmp/skills",
+        runtime="runsc",
+    )
+
+    session = _run(sandbox.create(config))
+    assert session.container_id == "sandbox-abc"
+
+    assert "runsc" == client.containers.create.call_args[1]["runtime"]
+    assert client.containers.create.call_args[1]["network"] == "bp_agents"
+
+    client.containers.get.return_value = _container_with_status("running")
+    assert _run(sandbox.is_running(session.container_id)) is True
+
+    client.containers.list.return_value = [container]
+    listed = _run(sandbox.list_containers({"image": "symphony-agent:latest"}))
+    assert listed == ["sandbox-abc"]
+
+    client.containers.get.return_value = container
+    _run(sandbox.destroy(session.container_id))
+    container.remove.assert_called_once_with(force=True, v=True)
+
+
+def test_runsc_unavailable_raises_not_falls_back() -> None:
+    """ADR-0002 requires gVisor. If runsc is unavailable the sandbox must
+    fail rather than silently drop isolation."""
+    client = MagicMock()
+    client.api.create_host_config.return_value = {}
+    client.containers.create.side_effect = docker.errors.DockerException(
+        "runsc not available"
+    )
+    sandbox = DockerSandbox(docker_client=client)
+
+    config = SandboxConfig(
+        image="symphony-agent:latest",
+        workspace_path="/tmp/ws",
+        skills_path="/tmp/skills",
+        runtime="runsc",
+    )
+
+    with pytest.raises(docker.errors.DockerException):
+        _run(sandbox.create(config))
+    assert client.containers.create.call_count == 1
+
+
+def _container_with_status(status: str) -> MagicMock:
+    c = MagicMock()
+    c.status = status
+    return c
+
+
+def _run(coro):
+    import asyncio
+
+    return asyncio.run(coro)

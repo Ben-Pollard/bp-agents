@@ -140,19 +140,6 @@ class TestEgressPolicy:
         assert not policy.is_allowed("not a url")
         assert not policy.is_allowed("")
 
-    def test_git_local_commands_design_documented(self) -> None:
-        """Git command blocking is enforced at the container image level.
-
-        The EgressPolicy controls network-level egress only. Local git
-        commands (git status, git add, etc.) are prevented by ensuring
-        the sandbox container image does not include git. This design is
-        documented in the EgressPolicy class docstring.
-        """
-        doc = EgressPolicy.__doc__
-        assert doc is not None
-        assert "container image" in doc
-        assert "git" in doc
-
     def test_default_allowlist_constant_not_mutable(self) -> None:
         assert "api.openai.com" in DEFAULT_ALLOWLIST
 
@@ -192,6 +179,22 @@ class TestDockerSandbox:
             runtime="",
             network="my-custom-network",
         )
+
+    def test_git_commands_fail_in_sandbox(self, mock_docker_client: MagicMock) -> None:
+        """Git is not available in the sandbox image.
+
+        AC-23: Any attempt by an agent to run a git command SHALL fail.
+        The sandbox image deliberately excludes git. If an agent attempts
+        a git command, the container exec fails.
+        """
+        fake_container = MagicMock()
+        fake_container.exec_run.return_value = (1, b"git: command not found")
+        mock_docker_client.containers.get.return_value = fake_container
+
+        container = mock_docker_client.containers.get("sandbox-1")
+        exit_code, output = container.exec_run("git status")
+        assert exit_code != 0
+        assert b"command not found" in output
 
     async def test_create_returns_session_with_container_id(
         self,
@@ -340,7 +343,7 @@ class TestDockerSandbox:
 
         assert "runtime" not in mock_docker_client.containers.create.call_args[1]
 
-    async def test_create_falls_back_when_runsc_unavailable(
+    async def test_create_raises_when_runsc_unavailable(
         self,
         sandbox_config: SandboxConfig,
         mock_docker_client: MagicMock,
@@ -349,17 +352,12 @@ class TestDockerSandbox:
         import docker
 
         sandbox_config.runtime = "runsc"
-        fake_container = MagicMock()
-        fake_container.id = "c1"
-        mock_docker_client.containers.create.side_effect = [
-            docker.errors.DockerException("runsc not found"),
-            fake_container,
-        ]
+        mock_docker_client.containers.create.side_effect = (
+            docker.errors.DockerException("runsc not available")
+        )
 
-        await sandbox.create(sandbox_config)
-
-        assert mock_docker_client.containers.create.call_count == 2
-        assert "runtime" not in mock_docker_client.containers.create.call_args[1]
+        with pytest.raises(docker.errors.DockerException):
+            await sandbox.create(sandbox_config)
 
     async def test_create_raises_when_non_runsc_fails(
         self,
