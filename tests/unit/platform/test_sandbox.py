@@ -538,3 +538,15 @@ class TestDockerSandbox:
     ) -> None:
         sandbox = DockerSandbox(docker_client=mock_docker_client)
         sandbox.egress_policy.check("https://api.openai.com/v1/chat")  # no error
+
+    def test_e2e_python_one_liner_is_valid_syntax(self) -> None:
+        """The E2E test for blocked internet (AC-22) uses a single-line
+        Python one-liner passed to python -c via exec_run. This test
+        ensures the Python code is syntactically valid so the E2E test
+        actually exercises the proxy rather than failing on a parse error."""
+        code = (
+            "import urllib.request, urllib.error;"
+            "r = urllib.request.urlopen('https://example.com', timeout=10);"
+            "print('REACHED', r.status)"
+        )
+        compile(code, "<test>", "exec")
