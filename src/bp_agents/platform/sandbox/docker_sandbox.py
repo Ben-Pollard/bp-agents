@@ -136,3 +136,6 @@ class DockerSandbox(Sandbox):
         ]
         containers = self._client.containers.list(filters={"label": filters})
         return [c.id for c in containers]
+
+
+GVisorSandbox = DockerSandbox

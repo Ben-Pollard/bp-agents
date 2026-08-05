@@ -45,9 +45,14 @@ class EgressPolicy:
             for allowed in self.allowlist
         )
 
-    def check(self, destination: str) -> None:
+    def check(self, destination: str, ticket_id: str = "") -> None:
         if not self.is_allowed(destination):
-            logger.warning("blocked egress: %s", destination)
+            if ticket_id:
+                logger.warning(
+                    "blocked egress: %s from ticket %s", destination, ticket_id
+                )
+            else:
+                logger.warning("blocked egress: %s", destination)
             raise EgressBlockedError(destination)
 
 
