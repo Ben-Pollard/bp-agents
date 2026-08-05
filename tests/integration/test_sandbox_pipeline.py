@@ -66,6 +66,51 @@ def test_egress_blocker_logs_ticket_unknown_suffix() -> None:
     ), "egress_blocker.py must log 'from ticket <unknown>' suffix"
 
 
+def _load_sandbox_dockerfile() -> str:
+    root = Path(__file__).resolve().parents[2]
+    return (root / "Dockerfile.sandbox").read_text()
+
+
+def test_sandbox_dockerfile_installs_opencode_via_npm() -> None:
+    """The sandbox image installs opencode from the npm package
+    `opencode-ai`. Installing via `uv tool install opencode@latest` fails
+    because opencode is not published to PyPI, which blocks the entire TDD
+    pipeline (QA finding)."""
+    dockerfile = _load_sandbox_dockerfile()
+    assert (
+        "npm install -g opencode-ai" in dockerfile
+    ), "Dockerfile.sandbox must install opencode via npm package opencode-ai"
+    assert (
+        "uv tool install opencode" not in dockerfile
+    ), "Dockerfile.sandbox must NOT install opencode from PyPI via uv"
+    assert (
+        "nodejs" in dockerfile
+    ), "Dockerfile.sandbox must install nodejs before running npm install"
+
+
+def test_sandbox_dockerfile_serves_with_hostname_flag() -> None:
+    """The opencode serve command uses --hostname, not --host."""
+    dockerfile = _load_sandbox_dockerfile()
+    assert "--hostname" in dockerfile, "opencode serve must use --hostname flag"
+    assert (
+        '"opencode", "serve"' in dockerfile
+    ), "Dockerfile.sandbox must run `opencode serve`"
+
+
+def test_compose_orchestrator_has_target_repo_default() -> None:
+    """The orchestrator service must default BP_TARGET_REPO_PATH to a real
+    path so the live system runs the real TDD pipeline instead of falling
+    back to the stub (QA finding)."""
+    compose = _load_compose()
+    env = compose["services"]["orchestrator"]["environment"]
+    target = env["BP_TARGET_REPO_PATH"]
+    assert "${BP_TARGET_REPO_PATH:-/dev/null}" not in target
+    assert "${BP_TARGET_REPO_PATH:-" in target
+    default = target.split(":-", 1)[1].rstrip("}")
+    assert default, "BP_TARGET_REPO_PATH default must not be empty"
+    assert default != "/dev/null"
+
+
 def test_egress_blocker_reads_env_var() -> None:
     """The egress blocker addon script must read the allowlist from the
     MITMPROXY_ALLOWLIST environment variable (comma-separated), falling back
