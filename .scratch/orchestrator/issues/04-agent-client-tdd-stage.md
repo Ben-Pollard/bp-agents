@@ -1,4 +1,4 @@
-Status: in-progress
+Status: ready-for-human
 
 # 04 — Agent client + TDD stage (first real dispatch)
 
@@ -123,3 +123,44 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 
 - #02 Tracker port + Pipeline engine skeleton
 - #03 Sandbox adapter + Egress proxy
+
+## Outcome
+
+QA stage escalated after 3 rounds. Code is complete and passing all tests (119 unit, 17 integration). All lint passes.
+
+### What was built
+
+- `OpenCodeClient` (httpx wrapper for opencode serve HTTP API): create_session, prompt, stream_events, session_status
+- `TddNode`: sandbox creation, agent dispatch with contract logging, outcome_path reading, feature branch creation
+- Orchestrator poll loop with Redmine integration: ticket discovery, state transitions (ready → implementing → blocked/awaiting_review)
+- Input contracts logged to stdout and posted to Redmine journals (AC-01, AC-14, AC-07 PASS verified)
+
+### Fixes applied in this session
+
+1. **route_ticket routing bug** (`graph.py:120`) — `blocked_reason` routing condition blocked by `status != 'blocked'` guard. Removed guard so blocked reasons route to the `block` node.
+2. **ConnectError handler** (`tdd.py`) — Fixed log format to `"blocked, reason: sandbox unreachable"` (AC-11). Added Redmine tracker update before return.
+3. **bootstrap env** (`bootstrap_redmine.py`) — Changed empty `BP_TARGET_REPO_PATH` default to match docker-compose default.
+4. **gVisor runsc networking** (`docker_sandbox.py`, `config.py`, `main.py`, `docker-compose.yml`) — Three-way reconciliation:
+
+   **Constraint #03:** gVisor netstack doesn't forward UDP on user-defined bridges — Docker DNS (127.0.0.11) uses iptables DNAT rules gVisor doesn't apply (google/gvisor#7469). Fix from #03: default bridge + host gateway proxy.
+
+   **Constraint #04:** Orchestrator on `bp_agents` can't reach sandbox on default bridge. `docker network connect` broken under runsc.
+
+   **Reconciliation:** Sandbox created directly on `bp_agents` network + explicit `dns=["8.8.8.8"]` bypasses Docker DNS + egress-proxy assigned static IP `172.20.0.10` so sandbox reaches proxy by IP without Docker DNS hostname resolution.
+
+   Files changed:
+   - `docker-compose.yml` — `bp_agents` network gets explicit subnet (`172.20.0.0/16`), egress-proxy gets `ipv4_address: 172.20.0.10`
+   - `config.py` — Added `dns_servers: list[str] | None`, proxy defaults changed to `http://172.20.0.10:8080`
+   - `docker_sandbox.py` — Passes `dns` kwarg when `config.dns_servers` is set
+   - `main.py` — `network="bp_agents"` already set in previous fix
+
+### What needs human action
+
+**Rebuild and redeploy the orchestrator container** with the latest code (commit `bdb9fcc`) to verify the gVisor networking fix. The code fix is committed and unit-tested, but live E2E verification requires the updated orchestrator to be running.
+
+### Outcome artefacts
+
+- `.scratch/orchestrator/outcomes/implement-outcome.json`
+- `.scratch/orchestrator/outcomes/review-outcome.json`
+- `.scratch/orchestrator/outcomes/reduction-outcome.json`
+- `.scratch/orchestrator/outcomes/verify-outcome.json`

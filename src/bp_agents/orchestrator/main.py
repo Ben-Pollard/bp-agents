@@ -118,6 +118,9 @@ async def main_async(
             skills_path=skills_path,
             runtime=SANDBOX_RUNTIME,
             network="bp_agents",
+            http_proxy="http://172.20.0.10:8080",
+            https_proxy="http://172.20.0.10:8080",
+            dns_servers=["8.8.8.8"],
             command=["opencode", "serve", "--port", "8080", "--hostname", "0.0.0.0"],
         )
 

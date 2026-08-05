@@ -102,6 +102,9 @@ class DockerSandbox(Sandbox):
         if config.runtime == "runsc":
             create_kwargs["runtime"] = "runsc"
 
+        if config.dns_servers:
+            create_kwargs["dns"] = config.dns_servers
+
         try:
             container: Container = self._client.containers.create(**create_kwargs)
         except docker.errors.DockerException:

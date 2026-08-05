@@ -26,7 +26,8 @@ services:
     volumes:
       - ./scripts:/scripts
     networks:
-      - bp_agents
+      bp_agents:
+        ipv4_address: 172.20.0.10
 
   redmine:
     image: redmine:6
@@ -150,3 +151,6 @@ volumes:
 networks:
   bp_agents:
     name: bp_agents
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
