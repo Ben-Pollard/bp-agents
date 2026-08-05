@@ -127,12 +127,11 @@ class TddNode:
                         httpx.RemoteProtocolError,
                     ) as exc:
                         logger.error(
-                            "ticket %s: sandbox unreachable: %s",
+                            "ticket %s: blocked, reason: sandbox unreachable: %s",
                             ticket_id,
                             exc,
                         )
                         return {
-                            "status": "blocked",
                             "blocked_reason": f"sandbox unreachable: {exc}",
                         }
 
@@ -142,7 +141,6 @@ class TddNode:
                         )
                     except OutcomeMissingError:
                         return {
-                            "status": "blocked",
                             "blocked_reason": "agent: no outcome file written by agent",
                         }
 
@@ -286,7 +284,6 @@ class TddNode:
                 ticket_id, "blocked", state.get("project", "unknown")
             )
         return {
-            "status": "blocked",
             "blocked_reason": reason,
             "tdd_output": tdd_output,
         }

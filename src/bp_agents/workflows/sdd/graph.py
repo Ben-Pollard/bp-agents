@@ -84,7 +84,6 @@ def _stub_implement_node(tracker: "Tracker | None" = None):
             )
             await tracker.update_state(ticket_id, "blocked", project)
             return {
-                "status": "blocked",
                 "blocked_reason": _STUB_NOT_CONFIGURED_REASON,
             }
 
@@ -98,7 +97,6 @@ def _stub_implement_node(tracker: "Tracker | None" = None):
                 _STUB_NOT_CONFIGURED_REASON,
             )
             return {
-                "status": "blocked",
                 "blocked_reason": _STUB_NOT_CONFIGURED_REASON,
             }
 

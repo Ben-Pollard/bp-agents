@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
@@ -282,10 +283,10 @@ class TestTddNode:
         ):
             result = await node(_make_state())
 
-        assert result["status"] == "blocked"
         assert result["blocked_reason"] == (
             "agent: Module utils.validators not yet implemented"
         )
+        assert "status" not in result
         assert result["tdd_output"]["status"] == "BLOCKED"
 
         mock_sandbox.create.assert_called_once()
@@ -327,7 +328,7 @@ class TestTddNode:
         ):
             result = await node(_make_state())
 
-        assert result["status"] == "blocked"
+        assert "status" not in result
         assert "no outcome file" in result.get("blocked_reason", "").lower()
 
         mock_sandbox.create.assert_called_once()
@@ -430,7 +431,7 @@ class TestTddNode:
         ):
             result = await node(_make_state())
 
-        assert result["status"] == "blocked"
+        assert "status" not in result
         assert "transient" in result["blocked_reason"]
 
         log = subprocess.run(
@@ -609,3 +610,46 @@ class TestTddNode:
         assert result["status"] == "awaiting_review"
         assert calls == ["create_session", "prompt", "wait"]
         mock_client.close.assert_not_called()
+
+    async def test_connect_error_logs_correct_format_and_updates_tracker(
+        self,
+        target_repo: Path,
+        skills_dir: Path,
+        mock_sandbox: MagicMock,
+        sandbox_config: SandboxConfig,
+        tracker: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import logging
+
+        failing_client = MagicMock()
+        failing_client.create_session = AsyncMock(
+            side_effect=httpx.ConnectError("All connection attempts failed")
+        )
+        failing_client.close = AsyncMock()
+
+        node = TddNode(
+            sandbox=mock_sandbox,
+            sandbox_config=sandbox_config,
+            target_repo_path=str(target_repo),
+            skills_path=str(skills_dir),
+            tracker=tracker,
+        )
+
+        caplog.set_level(logging.INFO)
+
+        with patch(
+            "bp_agents.workflows.sdd.tdd.OpenCodeClient", return_value=failing_client
+        ):
+            result = await node(_make_state())
+
+        assert "status" not in result
+        assert "sandbox unreachable" in result["blocked_reason"]
+
+        messages = [r.message for r in caplog.records]
+        assert any(
+            "blocked, reason: sandbox unreachable" in m for m in messages
+        ), "ConnectError must log 'blocked, reason: sandbox unreachable' (AC-11)"
+
+        mock_sandbox.create.assert_called_once()
+        mock_sandbox.destroy.assert_called_once()

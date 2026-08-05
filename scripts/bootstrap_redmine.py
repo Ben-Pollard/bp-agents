@@ -239,7 +239,9 @@ def _write_env(api_key: str) -> None:
         "EGRESS_PROXY_URL": "http://egress-proxy:8080",
         "BP_POLL_INTERVAL": "5",
         "BP_SANDBOX_IMAGE": os.getenv("BP_SANDBOX_IMAGE", "symphony-agent:latest"),
-        "BP_TARGET_REPO_PATH": os.getenv("BP_TARGET_REPO_PATH", ""),
+        "BP_TARGET_REPO_PATH": os.getenv(
+            "BP_TARGET_REPO_PATH", "/data/repos/default-project"
+        ),
         "BP_SKILLS_PATH": os.getenv("BP_SKILLS_PATH", ".agents/skills"),
         "BP_SANDBOX_RUNTIME": os.getenv("BP_SANDBOX_RUNTIME", "runsc"),
     }
