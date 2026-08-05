@@ -12,6 +12,7 @@ from bp_agents.workflows.sdd.state import (
 from bp_agents.workflows.sdd.tdd import TddNode
 
 if TYPE_CHECKING:
+    from bp_agents.platform.agent_client import OpenCodeClient
     from bp_agents.platform.sandbox import Sandbox, SandboxConfig
     from bp_agents.platform.tracker import Tracker
 
@@ -93,6 +94,7 @@ def build_ticket_pipeline(
     sandbox_config: "SandboxConfig | None" = None,
     target_repo_path: str | None = None,
     skills_path: str | None = None,
+    open_code_client: "OpenCodeClient | None" = None,
 ):
     builder = StateGraph(TicketPipelineState)
 
@@ -109,6 +111,7 @@ def build_ticket_pipeline(
             target_repo_path=target_repo_path,
             skills_path=skills_path or "",
             tracker=tracker,
+            client=open_code_client,
         )
     else:
         implement_node = _node("implementing", tracker)

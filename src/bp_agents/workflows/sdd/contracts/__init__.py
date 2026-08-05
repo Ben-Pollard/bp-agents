@@ -31,7 +31,7 @@ class TicketState(StrEnum):
 
 
 class TddOutput(TypedDict):
-    status: Literal["DONE", "DONE_WITH_CONCERNS", "BLOCKED"]
+    status: Literal["DONE", "DONE_WITH_CONCERNS", "BLOCKED", "FAIL"]
     summary: str
     test_results: dict
     concerns: list[str]

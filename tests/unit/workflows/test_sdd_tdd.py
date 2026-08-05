@@ -64,6 +64,16 @@ class TestValidateTddOutput:
         result = validate_tdd_output(data)
         assert result["status"] == "BLOCKED"
 
+    def test_valid_fail(self) -> None:
+        data = {
+            "status": "FAIL",
+            "summary": "Transient error",
+            "test_results": {"passed": 0, "failed": 0, "skipped": 0},
+            "concerns": ["Network timeout"],
+        }
+        result = validate_tdd_output(data)
+        assert result["status"] == "FAIL"
+
     def test_missing_field_raises(self) -> None:
         with pytest.raises(ValueError, match="missing fields"):
             validate_tdd_output({"status": "DONE"})
@@ -179,6 +189,7 @@ class TestTddNode:
     def tracker(self) -> MagicMock:
         t = MagicMock()
         t.update_state = AsyncMock()
+        t.add_comment = AsyncMock()
         return t
 
     async def test_tdd_complete_creates_branch_and_commits(
@@ -237,9 +248,9 @@ class TestTddNode:
         )
         assert branch.stdout.strip() == "feat/tick-1"
 
-        tracker.update_state.assert_called_once_with(
-            "TICK-1", "awaiting_review", "project-1"
-        )
+        tracker.update_state.assert_any_call("TICK-1", "implementing", "project-1")
+        tracker.update_state.assert_any_call("TICK-1", "awaiting_review", "project-1")
+        tracker.add_comment.assert_called()
 
     async def test_tdd_blocked_does_not_commit(
         self,
@@ -290,7 +301,9 @@ class TestTddNode:
         assert "feat(TICK-1)" not in log.stdout
         assert "initial" in log.stdout
 
-        tracker.update_state.assert_called_once_with("TICK-1", "blocked", "project-1")
+        tracker.update_state.assert_any_call("TICK-1", "implementing", "project-1")
+        tracker.update_state.assert_any_call("TICK-1", "blocked", "project-1")
+        tracker.add_comment.assert_called()
 
     async def test_tdd_missing_outcome_returns_blocked(
         self,
@@ -355,6 +368,80 @@ class TestTddNode:
         assert not (target_repo / ".agents").exists()
         assert (target_repo / "hello.py").exists()
 
+    async def test_tdd_blocked_cleans_artifacts(
+        self,
+        target_repo: Path,
+        skills_dir: Path,
+        mock_sandbox: MagicMock,
+        sandbox_config: SandboxConfig,
+        mock_client: MagicMock,
+        tracker: MagicMock,
+    ) -> None:
+        outcome = {
+            "status": "BLOCKED",
+            "summary": "Missing dep",
+            "test_results": {"passed": 0, "failed": 0, "skipped": 0},
+            "concerns": ["Module missing"],
+        }
+        self._write_outcome(target_repo, outcome)
+
+        node = TddNode(
+            sandbox=mock_sandbox,
+            sandbox_config=sandbox_config,
+            target_repo_path=str(target_repo),
+            skills_path=str(skills_dir),
+            tracker=tracker,
+        )
+
+        with patch(
+            "bp_agents.workflows.sdd.tdd.OpenCodeClient", return_value=mock_client
+        ):
+            await node(_make_state())
+
+        assert not (target_repo / "outcome.json").exists()
+
+    async def test_tdd_fail_status_handled_as_blocked(
+        self,
+        target_repo: Path,
+        skills_dir: Path,
+        mock_sandbox: MagicMock,
+        sandbox_config: SandboxConfig,
+        mock_client: MagicMock,
+        tracker: MagicMock,
+    ) -> None:
+        outcome = {
+            "status": "FAIL",
+            "summary": "Transient error",
+            "test_results": {"passed": 0, "failed": 0, "skipped": 0},
+            "concerns": ["Network timeout"],
+        }
+        self._write_outcome(target_repo, outcome)
+
+        node = TddNode(
+            sandbox=mock_sandbox,
+            sandbox_config=sandbox_config,
+            target_repo_path=str(target_repo),
+            skills_path=str(skills_dir),
+            tracker=tracker,
+        )
+
+        with patch(
+            "bp_agents.workflows.sdd.tdd.OpenCodeClient", return_value=mock_client
+        ):
+            result = await node(_make_state())
+
+        assert result["status"] == "blocked"
+        assert "transient" in result["blocked_reason"]
+
+        log = subprocess.run(
+            ["git", "log", "--oneline", "-1"],
+            cwd=target_repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "feat(TICK-1)" not in log.stdout
+
     async def test_tdd_complete_uses_sandbox_config_with_writable_workspace(
         self,
         target_repo: Path,
@@ -391,3 +478,116 @@ class TestTddNode:
         assert call_kwargs.workspace_path == str(target_repo)
         assert "outcome_path" in call_kwargs.env
         assert call_kwargs.env["outcome_path"] == "/data/workspace/outcome.json"
+
+    async def test_nfr_guard_rejects_bp_agents_target(
+        self,
+        target_repo: Path,
+        skills_dir: Path,
+        mock_sandbox: MagicMock,
+        sandbox_config: SandboxConfig,
+        mock_client: MagicMock,
+        tracker: MagicMock,
+    ) -> None:
+        bp_agents_path = str(Path(tempfile.mkdtemp()) / "bp-agents" / "subdir")
+        node = TddNode(
+            sandbox=mock_sandbox,
+            sandbox_config=sandbox_config,
+            target_repo_path=bp_agents_path,
+            skills_path=str(skills_dir),
+            tracker=tracker,
+        )
+
+        with pytest.raises(RuntimeError, match="bp-agents"):
+            node._prepare_workspace()
+
+    async def test_nfr_guard_rejects_dot_agents_segment(
+        self,
+        target_repo: Path,
+        skills_dir: Path,
+        mock_sandbox: MagicMock,
+        sandbox_config: SandboxConfig,
+        mock_client: MagicMock,
+        tracker: MagicMock,
+    ) -> None:
+        dangerous_path = str(Path(tempfile.mkdtemp()) / "some-project" / ".agents")
+        node = TddNode(
+            sandbox=mock_sandbox,
+            sandbox_config=sandbox_config,
+            target_repo_path=dangerous_path,
+            skills_path=str(skills_dir),
+            tracker=tracker,
+        )
+
+        with pytest.raises(RuntimeError, match="bp-agents"):
+            node._prepare_workspace()
+
+    async def test_ensure_feature_branch_raises_on_total_failure(
+        self,
+        target_repo: Path,
+        skills_dir: Path,
+        mock_sandbox: MagicMock,
+        sandbox_config: SandboxConfig,
+        mock_client: MagicMock,
+        tracker: MagicMock,
+    ) -> None:
+        non_repo = Path(tempfile.mkdtemp())
+        node = TddNode(
+            sandbox=mock_sandbox,
+            sandbox_config=sandbox_config,
+            target_repo_path=str(non_repo),
+            skills_path=str(skills_dir),
+            tracker=tracker,
+        )
+
+        with pytest.raises(RuntimeError, match="Failed to create or checkout"):
+            node._ensure_feature_branch("TICK-99")
+
+    async def test_injected_client_used_instead_of_creating_one(
+        self,
+        target_repo: Path,
+        skills_dir: Path,
+        mock_sandbox: MagicMock,
+        sandbox_config: SandboxConfig,
+        tracker: MagicMock,
+    ) -> None:
+        outcome = {
+            "status": "DONE",
+            "summary": "Done via injected client",
+            "test_results": {"passed": 1, "failed": 0, "skipped": 0},
+            "concerns": [],
+        }
+        self._write_outcome(target_repo, outcome)
+        self._write_agent_code(target_repo)
+
+        calls = []
+
+        async def fake_create_session(**kwargs):
+            calls.append("create_session")
+            return MagicMock(session_id="sess-1")
+
+        async def fake_prompt(*args, **kwargs):
+            calls.append("prompt")
+
+        async def fake_wait(*args, **kwargs):
+            calls.append("wait")
+            return {"state": "completed"}
+
+        mock_client = MagicMock()
+        mock_client.create_session = AsyncMock(side_effect=fake_create_session)
+        mock_client.prompt = AsyncMock(side_effect=fake_prompt)
+        mock_client.wait = AsyncMock(side_effect=fake_wait)
+
+        node = TddNode(
+            sandbox=mock_sandbox,
+            sandbox_config=sandbox_config,
+            target_repo_path=str(target_repo),
+            skills_path=str(skills_dir),
+            tracker=tracker,
+            client=mock_client,
+        )
+
+        result = await node(_make_state())
+
+        assert result["status"] == "awaiting_review"
+        assert calls == ["create_session", "prompt", "wait"]
+        mock_client.close.assert_not_called()

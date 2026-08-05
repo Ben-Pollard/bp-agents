@@ -2,11 +2,13 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 from langgraph.graph import END
 
+from bp_agents.platform.agent_client import OpenCodeClient
 from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
 from bp_agents.workflows.sdd.graph import (
     build_ticket_pipeline,
@@ -115,8 +117,30 @@ def test_pipeline_flow_from_awaiting_verification() -> None:
     assert result["status"] == "done"
 
 
+def _make_fake_opencode_transport():
+    """Fake opencode HTTP server at the system boundary (httpx.MockTransport)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/session" and request.method == "POST":
+            return httpx.Response(200, json={"id": "sess-1"})
+        if (
+            request.url.path == "/api/session/sess-1/prompt"
+            and request.method == "POST"
+        ):
+            return httpx.Response(200, json={"id": "prompt-1"})
+        if request.url.path == "/api/session/sess-1/wait" and request.method == "POST":
+            return httpx.Response(200, json={"id": "sess-1", "state": "completed"})
+        return httpx.Response(404)
+
+    return httpx.MockTransport(handler)
+
+
 class TestTddGraphWire:
-    """Tracer bullet: ticket flows through the graph with a real TddNode."""
+    """Tracer bullet: ticket flows through the graph with a real TddNode.
+
+    Uses a fake opencode HTTP server (httpx.MockTransport) at the system
+    boundary so the real OpenCodeClient code path is exercised end-to-end.
+    """
 
     @pytest.fixture
     def target_repo(self) -> Path:
@@ -153,11 +177,18 @@ class TestTddGraphWire:
         sandbox.destroy = AsyncMock()
         return sandbox
 
+    @pytest.fixture
+    def open_code_client(self) -> OpenCodeClient:
+        transport = _make_fake_opencode_transport()
+        httpx_client = httpx.AsyncClient(base_url="http://test", transport=transport)
+        return OpenCodeClient("http://test", client=httpx_client)
+
     async def test_ready_ticket_with_tdd_success_reaches_awaiting_review(
         self,
         target_repo: Path,
         mock_sandbox: MagicMock,
         caplog: pytest.LogCaptureFixture,
+        open_code_client: OpenCodeClient,
     ) -> None:
         import logging
 
@@ -172,12 +203,6 @@ class TestTddGraphWire:
         }
         (target_repo / "outcome.json").write_text(json.dumps(outcome))
 
-        mock_client = MagicMock()
-        mock_client.create_session = AsyncMock(return_value=MagicMock())
-        mock_client.prompt = AsyncMock()
-        mock_client.wait = AsyncMock()
-        mock_client.close = AsyncMock()
-
         app = build_ticket_pipeline(
             sandbox=mock_sandbox,
             sandbox_config=SandboxConfig(
@@ -188,18 +213,15 @@ class TestTddGraphWire:
             ),
             target_repo_path=str(target_repo),
             skills_path=str(target_repo / "skills"),
+            open_code_client=open_code_client,
         )
 
         caplog.set_level(logging.INFO)
 
-        with patch(
-            "bp_agents.workflows.sdd.tdd.OpenCodeClient",
-            return_value=mock_client,
-        ):
-            result = await app.ainvoke(
-                _ts("ready", ticket_body="Write a hello world function"),
-                {"configurable": {"thread_id": "TICK-1"}},
-            )
+        result = await app.ainvoke(
+            _ts("ready", ticket_body="Write a hello world function"),
+            {"configurable": {"thread_id": "TICK-1"}},
+        )
 
         assert result["tdd_output"]["status"] == "DONE"
 
@@ -225,6 +247,7 @@ class TestTddGraphWire:
         target_repo: Path,
         mock_sandbox: MagicMock,
         caplog: pytest.LogCaptureFixture,
+        open_code_client: OpenCodeClient,
     ) -> None:
         import logging
 
@@ -236,12 +259,6 @@ class TestTddGraphWire:
         }
         (target_repo / "outcome.json").write_text(json.dumps(outcome))
 
-        mock_client = MagicMock()
-        mock_client.create_session = AsyncMock(return_value=MagicMock())
-        mock_client.prompt = AsyncMock()
-        mock_client.wait = AsyncMock()
-        mock_client.close = AsyncMock()
-
         app = build_ticket_pipeline(
             sandbox=mock_sandbox,
             sandbox_config=SandboxConfig(
@@ -252,18 +269,15 @@ class TestTddGraphWire:
             ),
             target_repo_path=str(target_repo),
             skills_path=str(target_repo / "skills"),
+            open_code_client=open_code_client,
         )
 
         caplog.set_level(logging.INFO)
 
-        with patch(
-            "bp_agents.workflows.sdd.tdd.OpenCodeClient",
-            return_value=mock_client,
-        ):
-            result = await app.ainvoke(
-                _ts("ready", ticket_body="Write a hello world function"),
-                {"configurable": {"thread_id": "TICK-2"}},
-            )
+        result = await app.ainvoke(
+            _ts("ready", ticket_body="Write a hello world function"),
+            {"configurable": {"thread_id": "TICK-2"}},
+        )
 
         assert result["status"] == "blocked"
         assert result["blocked_reason"].startswith("agent:")

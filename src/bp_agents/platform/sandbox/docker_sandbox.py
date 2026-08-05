@@ -67,7 +67,7 @@ class DockerSandbox(Sandbox):
     ) -> Container:
         create_kwargs: dict = dict(
             image=config.image,
-            command=["sleep", str(config.timeout_seconds)],
+            command=config.command or ["sleep", str(config.timeout_seconds)],
             environment=env,
             labels=labels,
             detach=True,

@@ -16,6 +16,7 @@ class SandboxConfig:
     http_proxy: str = "http://172.17.0.1:8080"
     https_proxy: str = "http://172.17.0.1:8080"
     no_proxy: str = "localhost,127.0.0.1"
+    command: list[str] | None = None
 
 
 @dataclass
