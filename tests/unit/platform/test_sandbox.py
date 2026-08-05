@@ -37,6 +37,17 @@ def test_sandbox_config_defaults() -> None:
     assert config.mem_limit == "512m"
     assert config.cpu_count == 2
     assert config.network == ""
+    assert config.workspace_mode == "ro"
+
+
+def test_sandbox_config_writable_workspace() -> None:
+    config = SandboxConfig(
+        image="img",
+        workspace_path="/w",
+        skills_path="/s",
+        workspace_mode="rw",
+    )
+    assert config.workspace_mode == "rw"
 
 
 def test_sandbox_config_custom_network() -> None:
@@ -421,6 +432,22 @@ class TestDockerSandbox:
         volumes = call_kwargs["volumes"]
         assert volumes["/tmp/workspace"] == {"bind": "/data/workspace", "mode": "ro"}
         assert volumes["/tmp/skills"] == {"bind": "/data/skills", "mode": "ro"}
+
+    async def test_create_uses_writable_workspace_mode_when_configured(
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
+    ) -> None:
+        sandbox_config.workspace_mode = "rw"
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        mock_docker_client.containers.create.return_value = fake_container
+
+        await sandbox.create(sandbox_config)
+
+        volumes = mock_docker_client.containers.create.call_args[1]["volumes"]
+        assert volumes["/tmp/workspace"] == {"bind": "/data/workspace", "mode": "rw"}
 
     async def test_create_sets_labels(
         self,

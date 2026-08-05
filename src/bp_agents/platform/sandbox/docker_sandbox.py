@@ -75,7 +75,10 @@ class DockerSandbox(Sandbox):
             mem_limit=config.mem_limit,
             nano_cpus=int(config.cpu_count * 1e9),
             volumes={
-                config.workspace_path: {"bind": "/data/workspace", "mode": "ro"},
+                config.workspace_path: {
+                    "bind": "/data/workspace",
+                    "mode": config.workspace_mode,
+                },
                 config.skills_path: {"bind": "/data/skills", "mode": "ro"},
             },
         )

@@ -10,6 +10,7 @@ from bp_agents.workflows.sdd.contracts import (
 class TicketPipelineState(TypedDict):
     ticket_id: str
     project: str
+    ticket_body: str
     status: Literal[
         "ready",
         "implementing",
@@ -32,10 +33,13 @@ class TicketPipelineState(TypedDict):
     blocked_reason: str | None
 
 
-def initial_ticket_state(ticket_id: str, project: str) -> TicketPipelineState:
+def initial_ticket_state(
+    ticket_id: str, project: str, ticket_body: str = ""
+) -> TicketPipelineState:
     return {
         "ticket_id": ticket_id,
         "project": project,
+        "ticket_body": ticket_body,
         "status": "ready",
         "tdd_output": None,
         "review_output": None,

@@ -7,6 +7,7 @@ class SandboxConfig:
     workspace_path: str
     skills_path: str
     runtime: str = "runsc"
+    workspace_mode: str = "ro"
     env: dict[str, str] = field(default_factory=dict)
     timeout_seconds: int = 300
     mem_limit: str = "512m"

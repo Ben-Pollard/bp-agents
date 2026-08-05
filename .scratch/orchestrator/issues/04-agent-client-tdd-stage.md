@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: in-progress
 
 # 04 — Agent client + TDD stage (first real dispatch)
 
@@ -13,7 +13,7 @@ Status: ready-for-agent
 
 OpenCode HTTP client (`platform.agent_client`) wrapping `httpx` for opencode's HTTP API: create session, prompt, stream events, check session status. Then the TDD pipeline node — the first real agent dispatch. TDD node: creates sandbox, dispatches agent with ticket content, reads `outcome_path` file for structured JSON output, commits agent's work to feature branch. Both input and output contracts logged to stdout and queryable. Agent-declared block (`status: blocked` in output) transitions ticket to Blocked.
 
-After this slice, a ticket flows Ready → Implementing → Awaiting Review with real agent work committed to a feature branch.
+After this slice, a ticket flows Ready → Implementing → Awaiting Review with real agent work committed to a feature branch of the target project and the correct ticket status visible in redmine.
 
 ## Requirements
 
@@ -105,6 +105,7 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 ### Non-Functional Requirements
 
 - Secrets must never be logged or written to contracts, traces, or sandbox filesystems.
+- The target project must not be this repo (bp-agents)
 
 ## This Ticket's Acceptance Criteria
 
@@ -113,7 +114,7 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 - [ ] `OpenCodeClient.stream_events()` yields events from a running session
 - [ ] TDD node creates sandbox, dispatches agent with ticket body, waits for completion
 - [ ] TDD node reads structured output from `outcome_path` and validates it as `TddOutput`
-- [ ] Orchestrator commits agent changes to feature branch after TDD success
+- [ ] Orchestrator commits agent changes to feature branch of target project after TDD success
 - [ ] Input contract (skill, ticket body, context) logged to stdout
 - [ ] Output contract (status, summary, test results) logged to stdout
 - [ ] Agent-declared blocked (`status: BLOCKED`) transitions ticket to Blocked without commit

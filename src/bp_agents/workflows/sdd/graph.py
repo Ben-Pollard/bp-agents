@@ -1,7 +1,7 @@
 import functools
 import logging
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
@@ -9,8 +9,10 @@ from langgraph.graph import END, START, StateGraph
 from bp_agents.workflows.sdd.state import (
     TicketPipelineState,
 )
+from bp_agents.workflows.sdd.tdd import TddNode
 
 if TYPE_CHECKING:
+    from bp_agents.platform.sandbox import Sandbox, SandboxConfig
     from bp_agents.platform.tracker import Tracker
 
 logger = logging.getLogger(__name__)
@@ -87,11 +89,32 @@ def route_verify(state: TicketPipelineState) -> str:
 def build_ticket_pipeline(
     checkpointer: AsyncSqliteSaver | None = None,
     tracker: "Tracker | None" = None,
+    sandbox: "Sandbox | None" = None,
+    sandbox_config: "SandboxConfig | None" = None,
+    target_repo_path: str | None = None,
+    skills_path: str | None = None,
 ):
     builder = StateGraph(TicketPipelineState)
 
-    builder.add_node("implement", _node("implementing", tracker))
-    builder.add_node("implement_complete", _node("awaiting_review", tracker))
+    use_tdd = (
+        sandbox is not None
+        and sandbox_config is not None
+        and target_repo_path is not None
+    )
+
+    if use_tdd:
+        implement_node: Any = TddNode(
+            sandbox=sandbox,
+            sandbox_config=sandbox_config,
+            target_repo_path=target_repo_path,
+            skills_path=skills_path or "",
+            tracker=tracker,
+        )
+    else:
+        implement_node = _node("implementing", tracker)
+        builder.add_node("implement_complete", _node("awaiting_review", tracker))
+
+    builder.add_node("implement", implement_node)
     builder.add_node("review", _node("reviewing", tracker))
     builder.add_node("approve_review", _node("awaiting_verification", tracker))
     builder.add_node("request_changes", _node("awaiting_revision", tracker))
@@ -105,7 +128,8 @@ def build_ticket_pipeline(
 
     builder.add_conditional_edges(START, route_ticket)
     builder.add_conditional_edges("implement", route_ticket)
-    builder.add_conditional_edges("implement_complete", route_ticket)
+    if not use_tdd:
+        builder.add_conditional_edges("implement_complete", route_ticket)
     builder.add_conditional_edges("review", route_review)
     builder.add_conditional_edges("approve_review", route_ticket)
     builder.add_conditional_edges("request_changes", route_ticket)

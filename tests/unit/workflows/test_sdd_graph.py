@@ -1,6 +1,13 @@
+import json
+import subprocess
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from langgraph.graph import END
 
+from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
 from bp_agents.workflows.sdd.graph import (
     build_ticket_pipeline,
     route_review,
@@ -20,10 +27,12 @@ def _ts(
     review_approved: bool | None = None,
     verification_passed: bool | None = None,
     blocked_reason: str | None = None,
+    ticket_body: str = "",
 ) -> TicketPipelineState:
     return {
         "ticket_id": "TICK-1",
         "project": "project-1",
+        "ticket_body": ticket_body,
         "status": status,
         "tdd_output": None,
         "review_output": None,
@@ -104,3 +113,161 @@ def test_pipeline_flow_from_awaiting_verification() -> None:
     initial = _ts("awaiting_verification")
     result = app.invoke(initial, config)
     assert result["status"] == "done"
+
+
+class TestTddGraphWire:
+    """Tracer bullet: ticket flows through the graph with a real TddNode."""
+
+    @pytest.fixture
+    def target_repo(self) -> Path:
+        tmp = Path(tempfile.mkdtemp())
+        subprocess.run(
+            ["git", "init", "-b", "main"], cwd=tmp, capture_output=True, check=True
+        )
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@test",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "initial",
+            ],
+            cwd=tmp,
+            capture_output=True,
+            check=True,
+        )
+        return tmp
+
+    @pytest.fixture
+    def mock_sandbox(self) -> MagicMock:
+        sandbox = MagicMock()
+        sandbox.create = AsyncMock(
+            return_value=SandboxSession(
+                container_id="c1", port=32768, base_url="http://localhost:32768"
+            )
+        )
+        sandbox.destroy = AsyncMock()
+        return sandbox
+
+    async def test_ready_ticket_with_tdd_success_reaches_awaiting_review(
+        self,
+        target_repo: Path,
+        mock_sandbox: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import logging
+
+        (target_repo / "hello.py").write_text(
+            "def hello():\n    return 'hello world'\n"
+        )
+        outcome = {
+            "status": "DONE",
+            "summary": "Implemented hello world",
+            "test_results": {"passed": 3, "failed": 0, "skipped": 0},
+            "concerns": [],
+        }
+        (target_repo / "outcome.json").write_text(json.dumps(outcome))
+
+        mock_client = MagicMock()
+        mock_client.create_session = AsyncMock(return_value=MagicMock())
+        mock_client.prompt = AsyncMock()
+        mock_client.wait = AsyncMock()
+        mock_client.close = AsyncMock()
+
+        app = build_ticket_pipeline(
+            sandbox=mock_sandbox,
+            sandbox_config=SandboxConfig(
+                image="symphony-agent:latest",
+                workspace_path=str(target_repo),
+                skills_path=str(target_repo / "skills"),
+                runtime="",
+            ),
+            target_repo_path=str(target_repo),
+            skills_path=str(target_repo / "skills"),
+        )
+
+        caplog.set_level(logging.INFO)
+
+        with patch(
+            "bp_agents.workflows.sdd.tdd.OpenCodeClient",
+            return_value=mock_client,
+        ):
+            result = await app.ainvoke(
+                _ts("ready", ticket_body="Write a hello world function"),
+                {"configurable": {"thread_id": "TICK-1"}},
+            )
+
+        assert result["tdd_output"]["status"] == "DONE"
+
+        messages = [r.message for r in caplog.records]
+        assert any("dispatching tdd" in m for m in messages)
+        assert any(
+            "implementing -> awaiting-review" in m or "implementing -> awaiting" in m
+            for m in messages
+        )
+        assert any("tdd output" in m for m in messages)
+
+        log = subprocess.run(
+            ["git", "log", "--oneline", "-1"],
+            cwd=target_repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "feat(TICK-1)" in log.stdout
+
+    async def test_ready_ticket_with_tdd_blocked_reaches_blocked(
+        self,
+        target_repo: Path,
+        mock_sandbox: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import logging
+
+        outcome = {
+            "status": "BLOCKED",
+            "summary": "Missing dependency",
+            "test_results": {"passed": 0, "failed": 0, "skipped": 0},
+            "concerns": ["Module utils.validators not yet implemented"],
+        }
+        (target_repo / "outcome.json").write_text(json.dumps(outcome))
+
+        mock_client = MagicMock()
+        mock_client.create_session = AsyncMock(return_value=MagicMock())
+        mock_client.prompt = AsyncMock()
+        mock_client.wait = AsyncMock()
+        mock_client.close = AsyncMock()
+
+        app = build_ticket_pipeline(
+            sandbox=mock_sandbox,
+            sandbox_config=SandboxConfig(
+                image="symphony-agent:latest",
+                workspace_path=str(target_repo),
+                skills_path=str(target_repo / "skills"),
+                runtime="",
+            ),
+            target_repo_path=str(target_repo),
+            skills_path=str(target_repo / "skills"),
+        )
+
+        caplog.set_level(logging.INFO)
+
+        with patch(
+            "bp_agents.workflows.sdd.tdd.OpenCodeClient",
+            return_value=mock_client,
+        ):
+            result = await app.ainvoke(
+                _ts("ready", ticket_body="Write a hello world function"),
+                {"configurable": {"thread_id": "TICK-2"}},
+            )
+
+        assert result["status"] == "blocked"
+        assert result["blocked_reason"].startswith("agent:")
+        assert "utils.validators" in result["blocked_reason"]
+
+        messages = [r.message for r in caplog.records]
+        assert any("blocked, reason: agent:" in m for m in messages)

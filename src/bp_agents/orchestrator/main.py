@@ -14,6 +14,8 @@ from tenacity import (
     wait_fixed,
 )
 
+from bp_agents.platform.sandbox.config import SandboxConfig
+from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
 from bp_agents.platform.sandbox.egress import EgressPolicy
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
@@ -32,6 +34,10 @@ POLL_INTERVAL = int(os.getenv("BP_POLL_INTERVAL", "5"))
 REDMINE_API_KEY = os.getenv("REDMINE_API_KEY", "")
 REDMINE_PROJECT = os.getenv("REDMINE_PROJECT", "default")
 PIPELINE_DB_PATH = os.getenv("BP_PIPELINE_DB_PATH", "pipeline_checkpoints.db")
+SANDBOX_IMAGE = os.getenv("BP_SANDBOX_IMAGE", "symphony-agent:latest")
+TARGET_REPO_PATH = os.getenv("BP_TARGET_REPO_PATH", "")
+SKILLS_PATH = os.getenv("BP_SKILLS_PATH", ".agents/skills")
+SANDBOX_RUNTIME = os.getenv("BP_SANDBOX_RUNTIME", "runsc")
 
 
 def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
@@ -61,7 +67,9 @@ async def _poll_loop(tracker: Tracker, pipeline: Any) -> None:
                 REDMINE_PROJECT,
             )
             for ticket in ready:
-                state = initial_ticket_state(ticket["id"], REDMINE_PROJECT)
+                state = initial_ticket_state(
+                    ticket["id"], REDMINE_PROJECT, ticket.get("description") or ""
+                )
                 config = {
                     "configurable": {"thread_id": ticket["id"]},
                 }
@@ -71,7 +79,11 @@ async def _poll_loop(tracker: Tracker, pipeline: Any) -> None:
         await asyncio.sleep(POLL_INTERVAL)
 
 
-async def main_async(tracker: Tracker | None = None) -> None:
+async def main_async(
+    tracker: Tracker | None = None,
+    target_repo_path: str | None = None,
+    skills_path: str | None = None,
+) -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
@@ -93,10 +105,31 @@ async def main_async(tracker: Tracker | None = None) -> None:
         )
         await tracker.ensure_statuses()
 
+    target_repo_path = target_repo_path or TARGET_REPO_PATH
+    skills_path = skills_path or SKILLS_PATH
+
+    sandbox = None
+    sandbox_config = None
+    if target_repo_path:
+        sandbox = DockerSandbox(egress_policy=egress_policy)
+        sandbox_config = SandboxConfig(
+            image=SANDBOX_IMAGE,
+            workspace_path=target_repo_path,
+            skills_path=skills_path,
+            runtime=SANDBOX_RUNTIME,
+        )
+
     logger.info("orchestrator ready")
 
     async with AsyncSqliteSaver.from_conn_string(PIPELINE_DB_PATH) as checkpointer:
-        pipeline = build_ticket_pipeline(checkpointer=checkpointer, tracker=tracker)
+        pipeline = build_ticket_pipeline(
+            checkpointer=checkpointer,
+            tracker=tracker,
+            sandbox=sandbox,
+            sandbox_config=sandbox_config,
+            target_repo_path=target_repo_path,
+            skills_path=skills_path,
+        )
         await _poll_loop(tracker, pipeline)
 
 
