@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
-from bp_agents.workflows.sdd.state import TicketPipelineState
+
+if TYPE_CHECKING:
+    from bp_agents.workflows.sdd.state import TicketPipelineState
 
 
 def test_pipeline_with_sqlite_persistence() -> None:

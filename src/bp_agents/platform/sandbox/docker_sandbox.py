@@ -35,20 +35,20 @@ class DockerSandbox(Sandbox):
         env = self._build_env(config)
         labels = self._build_labels(config)
         container = await self._create_and_start_container(config, env, labels)
-        self._client.networks.get("bp_agents").connect(container)
         container.reload()
-        bp_agents_ip = (
+        network_name = config.network if config.network else "bridge"
+        container_ip = (
             container.attrs.get("NetworkSettings", {})
             .get("Networks", {})
-            .get("bp_agents", {})
+            .get(network_name, {})
             .get("IPAddress", "")
         )
-        if not bp_agents_ip:
-            logger.warning("no bp_agents IP found, falling back to port-only URL")
+        if not container_ip:
+            logger.warning("no container IP found, falling back to port-only URL")
             port = self._extract_port(container)
             base_url = f"http://172.17.0.1:{port}"
         else:
-            base_url = f"http://{bp_agents_ip}:8080"
+            base_url = f"http://{container_ip}:8080"
             port = 8080
 
         return SandboxSession(

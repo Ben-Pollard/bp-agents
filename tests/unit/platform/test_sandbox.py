@@ -471,6 +471,8 @@ class TestDockerSandbox:
         mock_docker_client: MagicMock,
         sandbox: DockerSandbox,
     ) -> None:
+        """Container created directly on configured network — no post-creation
+        network.connect() call (avoids gVisor runsc secondary-network bug)."""
         fake_container = MagicMock()
         fake_container.id = "c1"
         mock_docker_client.containers.create.return_value = fake_container
@@ -479,6 +481,30 @@ class TestDockerSandbox:
 
         call_kwargs = mock_docker_client.containers.create.call_args[1]
         assert call_kwargs["network"] == "my-custom-network"
+        mock_docker_client.networks.get.assert_not_called()
+        mock_docker_client.networks.connect.assert_not_called()
+
+    async def test_create_extracts_ip_from_configured_network(
+        self,
+        sandbox_config_with_network: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
+    ) -> None:
+        """When created on a configured network, the container's IP on that
+        network is used for the session base_url."""
+        fake_container = MagicMock()
+        fake_container.id = "c1"
+        fake_container.attrs = {
+            "NetworkSettings": {
+                "Networks": {"my-custom-network": {"IPAddress": "10.99.0.42"}}
+            }
+        }
+        mock_docker_client.containers.create.return_value = fake_container
+
+        session = await sandbox.create(sandbox_config_with_network)
+
+        assert session.base_url == "http://10.99.0.42:8080"
+        assert session.port == 8080
 
     async def test_create_passes_ports_to_create(
         self,
