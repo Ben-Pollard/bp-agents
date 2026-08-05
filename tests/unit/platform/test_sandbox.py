@@ -100,15 +100,6 @@ class TestEgressPolicy:
         policy = EgressPolicy()
         policy.check("https://api.openai.com/v1/chat")  # no error
 
-    def test_logs_allowlist_on_startup(self, caplog: pytest.LogCaptureFixture) -> None:
-        import logging
-
-        caplog.set_level(logging.INFO)
-        allowed = ["custom.example.com"]
-        EgressPolicy(allowlist=allowed)
-        assert "egress allowlist" in caplog.text
-        assert "custom.example.com" in caplog.text
-
     def test_log_allowlist_method(self, caplog: pytest.LogCaptureFixture) -> None:
         import logging
 

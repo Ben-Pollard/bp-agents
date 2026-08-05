@@ -10,7 +10,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from bp_agents.platform.sandbox.egress import EgressPolicy
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
-from bp_agents.workflows.sdd.state import TicketPipelineState
+from bp_agents.workflows.sdd.state import initial_ticket_state
 from bp_agents.workflows.sdd.tracker import RedmineTracker
 
 logger = logging.getLogger(__name__)
@@ -52,21 +52,6 @@ def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
     raise RuntimeError("%s did not become ready within %ds" % (name, timeout))
 
 
-def _to_pipeline_state(ticket: dict, project: str) -> TicketPipelineState:
-    return {
-        "ticket_id": ticket["id"],
-        "project": project,
-        "status": "ready",
-        "tdd_output": None,
-        "review_output": None,
-        "revision_output": None,
-        "diff": None,
-        "review_approved": None,
-        "verification_passed": None,
-        "blocked_reason": None,
-    }
-
-
 async def _poll_loop(tracker: Tracker, pipeline: Any) -> None:
     while True:
         try:
@@ -77,7 +62,7 @@ async def _poll_loop(tracker: Tracker, pipeline: Any) -> None:
                 REDMINE_PROJECT,
             )
             for ticket in ready:
-                state = _to_pipeline_state(ticket, REDMINE_PROJECT)
+                state = initial_ticket_state(ticket["id"], REDMINE_PROJECT)
                 config = {
                     "configurable": {"thread_id": ticket["id"]},
                 }

@@ -26,7 +26,6 @@ class DockerSandbox(Sandbox):
     ):
         self._client = docker_client or docker.DockerClient(base_url=docker_url)
         self._egress_policy = egress_policy or EgressPolicy()
-        self._egress_policy.log_allowlist()
 
     @property
     def egress_policy(self) -> EgressPolicy:

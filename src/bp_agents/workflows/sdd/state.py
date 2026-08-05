@@ -42,3 +42,18 @@ class TicketPipelineState(TypedDict):
     review_approved: bool | None
     verification_passed: bool | None
     blocked_reason: str | None
+
+
+def initial_ticket_state(ticket_id: str, project: str) -> TicketPipelineState:
+    return {
+        "ticket_id": ticket_id,
+        "project": project,
+        "status": "ready",
+        "tdd_output": None,
+        "review_output": None,
+        "revision_output": None,
+        "diff": None,
+        "review_approved": None,
+        "verification_passed": None,
+        "blocked_reason": None,
+    }

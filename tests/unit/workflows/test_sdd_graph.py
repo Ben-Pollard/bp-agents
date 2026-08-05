@@ -1,15 +1,13 @@
 import pytest
 from langgraph.graph import END
 
-from bp_agents.workflows.sdd.contracts import Ticket, TicketState
 from bp_agents.workflows.sdd.graph import (
-    build_feature_pipeline,
     build_ticket_pipeline,
     route_review,
     route_ticket,
     route_verify,
 )
-from bp_agents.workflows.sdd.state import SDDFeatureState, TicketPipelineState
+from bp_agents.workflows.sdd.state import TicketPipelineState
 
 
 def test_build_ticket_pipeline_compiles() -> None:
@@ -106,33 +104,3 @@ def test_pipeline_flow_from_awaiting_verification() -> None:
     initial = _ts("awaiting_verification")
     result = app.invoke(initial, config)
     assert result["status"] == "done"
-
-
-def test_build_feature_pipeline_compiles() -> None:
-    app = build_feature_pipeline()
-    assert app is not None
-
-
-@pytest.mark.asyncio
-async def test_feature_pipeline_processes_tickets() -> None:
-    app = build_feature_pipeline()
-    ticket = Ticket(
-        id="TICK-1",
-        name="test",
-        description=None,
-        state=TicketState.READY,
-        project="project-1",
-    )
-    initial: SDDFeatureState = {
-        "feature_id": "feat-1",
-        "project": "project-1",
-        "branch_name": None,
-        "acs": [],
-        "tickets": [ticket],
-        "ticket_states": {},
-        "current_stage": None,
-        "blocked_reason": None,
-    }
-    config = {"configurable": {"thread_id": "feat-1"}}
-    result = await app.ainvoke(initial, config)
-    assert result["ticket_states"]["TICK-1"]["status"] == "done"

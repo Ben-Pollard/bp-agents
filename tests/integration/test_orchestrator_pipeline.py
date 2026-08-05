@@ -6,10 +6,11 @@ from unittest import mock
 import httpx
 import pytest
 
-from bp_agents.orchestrator.main import _to_pipeline_state, wait_for_dependency
+from bp_agents.orchestrator.main import wait_for_dependency
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.contracts import Ticket, TicketState
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
+from bp_agents.workflows.sdd.state import initial_ticket_state
 
 
 class FakeTrackerReturns(Tracker):
@@ -93,7 +94,7 @@ async def test_pipeline_polls_tracker_and_dispatches_tickets(
         )
 
         for ticket in ready:
-            state = _to_pipeline_state(ticket, REDMINE_PROJECT)
+            state = initial_ticket_state(ticket["id"], REDMINE_PROJECT)
             config = {"configurable": {"thread_id": ticket["id"]}}
             await pipeline.ainvoke(state, config)
 

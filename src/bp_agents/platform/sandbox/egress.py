@@ -31,7 +31,6 @@ class EgressPolicy:
 
     def __init__(self, allowlist: list[str] | None = None) -> None:
         self.allowlist = allowlist or list(DEFAULT_ALLOWLIST)
-        self.log_allowlist()
 
     def log_allowlist(self) -> None:
         logger.info("egress allowlist: %s", self.allowlist)

@@ -7,7 +7,6 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 from bp_agents.workflows.sdd.state import (
-    SDDFeatureState,
     TicketPipelineState,
 )
 
@@ -117,44 +116,5 @@ def build_ticket_pipeline(
     builder.add_conditional_edges("verification_fail", route_ticket)
     builder.add_conditional_edges("approve_final", route_ticket)
     builder.add_conditional_edges("block", route_ticket)
-
-    return builder.compile(checkpointer=checkpointer)
-
-
-def build_feature_pipeline(
-    checkpointer: AsyncSqliteSaver | None = None,
-    tracker: "Tracker | None" = None,
-):
-    builder = StateGraph(SDDFeatureState)
-
-    ticket_pipeline = build_ticket_pipeline(checkpointer=checkpointer, tracker=tracker)
-
-    async def process_tickets(state: SDDFeatureState) -> dict:
-        updated_states: dict[str, TicketPipelineState] = {}
-        for ticket in state["tickets"]:
-            tid = ticket.id
-            if tid not in state["ticket_states"]:
-                ticket_state: TicketPipelineState = {
-                    "ticket_id": tid,
-                    "project": state["project"],
-                    "status": "ready",
-                    "tdd_output": None,
-                    "review_output": None,
-                    "revision_output": None,
-                    "diff": None,
-                    "review_approved": None,
-                    "verification_passed": None,
-                    "blocked_reason": None,
-                }
-            else:
-                ticket_state = state["ticket_states"][tid]
-            config = {"configurable": {"thread_id": tid}}
-            result = await ticket_pipeline.ainvoke(ticket_state, config)
-            updated_states[tid] = result
-        return {"ticket_states": updated_states}
-
-    builder.add_node("process_tickets", process_tickets)
-    builder.add_edge(START, "process_tickets")
-    builder.add_edge("process_tickets", END)
 
     return builder.compile(checkpointer=checkpointer)
