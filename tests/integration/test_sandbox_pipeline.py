@@ -9,7 +9,7 @@ import yaml
 
 from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
-from bp_agents.platform.sandbox.egress import EgressPolicy
+from bp_agents.platform.sandbox.egress import EgressBlockedError, EgressPolicy
 
 
 def _load_compose() -> dict:
@@ -45,6 +45,25 @@ def test_compose_allowlist_covers_default_allowlist() -> None:
     assert (
         default_hosts <= compose_hosts
     ), f"missing in compose allowlist: {default_hosts - compose_hosts}"
+
+
+@pytest.fixture
+def egress_policy() -> EgressPolicy:
+    return EgressPolicy()
+
+
+def test_policy_blocks_arbitrary_internet(
+    egress_policy: EgressPolicy,
+) -> None:
+    with pytest.raises(EgressBlockedError):
+        egress_policy.check("https://example.com", ticket_id="hello-1")
+
+
+def test_policy_permits_pypi_and_llm(
+    egress_policy: EgressPolicy,
+) -> None:
+    egress_policy.check("https://pypi.org/simple/", ticket_id="hello-1")
+    egress_policy.check("https://api.openai.com/v1/chat", ticket_id="hello-1")
 
 
 def test_sandbox_lifecycle_with_policy() -> None:

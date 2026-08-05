@@ -1,5 +1,19 @@
+from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal, TypedDict
+
+
+@dataclass
+class Ticket:
+    id: str
+    name: str
+    description: str | None
+    state: "TicketState"
+    project: str
+    labels: list[str] = field(default_factory=list)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class TicketState(StrEnum):

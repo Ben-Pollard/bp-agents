@@ -21,8 +21,20 @@ class FakeTrackerReturns(Tracker):
     async def list_ready(self, project: str) -> list[dict]:
         return self.tickets
 
+    async def get_item(self, item_id: str, project: str) -> dict:
+        return {
+            "id": item_id,
+            "name": "",
+            "description": None,
+            "state": TicketState.READY.value,
+            "project": project,
+        }
+
     async def update_state(self, item_id: str, state: str, project: str) -> None:
         self.update_calls.append((item_id, state, project))
+
+    async def add_comment(self, item_id: str, body: str, project: str) -> None:
+        pass
 
 
 @pytest.mark.asyncio

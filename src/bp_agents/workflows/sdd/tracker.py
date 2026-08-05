@@ -130,3 +130,16 @@ class RedmineTracker(Tracker):
         )
         resp.raise_for_status()
         await self._db_update_status(int(item_id), status_id)
+
+    async def get_item(self, item_id: str, project: str) -> dict:
+        resp = await self._client.get(f"/issues/{item_id}.json")
+        resp.raise_for_status()
+        data = resp.json()
+        return self._parse_issue(data.get("issue", {}), project)
+
+    async def add_comment(self, item_id: str, body: str, project: str) -> None:
+        resp = await self._client.put(
+            f"/issues/{item_id}.json",
+            json={"issue": {"notes": body}},
+        )
+        resp.raise_for_status()
