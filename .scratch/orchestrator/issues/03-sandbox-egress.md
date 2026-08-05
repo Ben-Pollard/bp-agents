@@ -123,21 +123,27 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 
 ## Outcome
 
-Escalated to human. QA loop exceeded review rounds and the sole remaining AC failure is environmental, not a code defect.
+Escalated to human. New architectural blocker discovered — gVisor netstack cannot resolve DNS on custom Docker networks.
 
-**Remaining failing AC:** `GVisorSandbox.create(config)` returns a running container with gVisor runtime (`runsc`).
+**runsc now installed** ✓ — `GVisorSandbox.create(config)` with `runtime=runsc` returns a running container.
 
-**Blocker:** gVisor `runsc` runtime is not installed on the Docker host (`docker run --runtime=runsc` → `unknown or invalid runtime name: runsc`). Only `runc` is available. The code correctly raises `APIError` ("runsc runtime unavailable") and does not fall back, per ADR-0002's open risk. A running gVisor container cannot be demonstrated in this environment.
+**New blocker: gVisor + custom Docker network = DNS failure.** A gVisor sandbox on the `bp_agents` network gets `Temporary failure in name resolution`. This breaks both AC-21 (reach PyPI through proxy) and AC-22 (blocked egress logging — DNS dies before reaching proxy). The E2E tests pass only because they use non-production defaults (`runtime=''`, `network=''`) that mask this failure.
 
-**All other ACs verified passing** (live system):
-- PyPI reachable through proxy (AC-21) — `pip install --dry-run requests` succeeds
-- Arbitrary internet blocked (AC-22) — example.com → URLError, proxy logs `blocked egress: example.com from ticket <unknown>` with timestamp
-- Git commands fail in sandbox (AC-23) — `git status` → exit 127, "executable file not found"
-- `destroy(container_id)` removes container; `list_containers(label_filter)` finds by label
-- Egress allowlist configurable via `MITMPROXY_ALLOWLIST` env var and logged on startup
+**Root cause:** gVisor's netstack doesn't support DNS resolution on user-defined Docker bridge networks. The open risk in the gap analysis only anticipated syscall gaps, not networking.
 
-**Test suite:** lint clean, 82 unit tests, 11 integration tests, E2E tests pass.
+**Decision needed:** This is an architectural choice:
+1. Accept the limitation: run sandboxes with `runtime=''` (runc default), skip gVisor isolation. Egress proxy still enforces allowlist.
+2. Implement a workaround: host networking for gVisor, or a DNS proxy inside the sandbox.
+3. Remove the gVisor requirement from AC-1, document it as an unsupported configuration.
 
-**Action needed:** Install gVisor `runsc` on the Docker host (or use a gVisor-enabled environment), then re-run QA to confirm the runsc AC. See `docs/architecture/gap-analysis.md` and ADR-0002.
+**ACs passing under runc (current production path):**
+- PyPI reachable through proxy — `pip install --dry-run requests` succeeds
+- Arbitrary internet blocked — example.com → URLError, proxy logs `blocked egress: ... from ticket <unknown>`
+- Git commands fail — exit 127, "executable file not found"
+- `destroy` removes container; `list_containers` finds by label
+- Egress allowlist configurable via `MITMPROXY_ALLOWLIST` env var, logged on startup
+- `GVisorSandbox.create` works with `runtime=runsc` (runsc now installed)
+
+**Test suite:** lint clean, 83 unit tests, 11 integration tests, 3 E2E tests pass.
 
 Outcome artifacts: `.scratch/orchestrator/outcomes/implement-outcome.json`, `review-outcome.json`, `reduction-outcome.json`, `verify-outcome.json`.
