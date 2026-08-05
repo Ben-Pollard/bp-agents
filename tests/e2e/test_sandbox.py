@@ -38,20 +38,35 @@ def _proxy_available() -> bool:
         return False
 
 
-@pytest.mark.skipif(not _docker_available(), reason="Docker not available")
+def _runsc_available() -> bool:
+    try:
+        import subprocess
+
+        subprocess.run(
+            ["docker", "run", "--rm", "--runtime=runsc", "hello-world"],
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        return True
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(
+    not (_docker_available() and _runsc_available()),
+    reason="Docker or runsc not available",
+)
 @pytest.mark.asyncio
 async def test_sandbox_git_commands_fail_in_real_container() -> None:
     """AC-23: Git commands MUST fail inside a sandbox container with a
-    clear error. Uses a real Docker container to verify the production
-    code path."""
+    clear error. Uses runsc (production default)."""
     client = _ensure_image()
     sandbox = DockerSandbox(docker_client=client)
     config = SandboxConfig(
         image=_IMAGE,
         workspace_path="/tmp",
         skills_path="/tmp",
-        runtime="",
-        network="",
         timeout_seconds=30,
         mem_limit="128m",
         cpu_count=1,
@@ -61,26 +76,28 @@ async def test_sandbox_git_commands_fail_in_real_container() -> None:
         exit_code, output = await sandbox.exec_run(session.container_id, "git status")
         assert exit_code != 0, "git should not be available in sandbox"
         assert (
-            b"not found" in output.lower() or b"not a command" in output.lower()
+            b"not found" in output.lower()
+            or b"not a command" in output.lower()
+            or b"no such file" in output.lower()
         ), f"expected 'not found' error, got: {output!r}"
     finally:
         await sandbox.destroy(session.container_id)
 
 
 @pytest.mark.skipif(
-    not (_docker_available() and _proxy_available()),
-    reason="Docker or egress-proxy not available",
+    not (_docker_available() and _proxy_available() and _runsc_available()),
+    reason="Docker, egress-proxy, or runsc not available",
 )
 @pytest.mark.asyncio
 async def test_sandbox_can_reach_pypi_through_proxy() -> None:
-    """AC-21: Sandbox can reach PyPI through the egress proxy."""
+    """AC-21: Sandbox can reach PyPI through the egress proxy.
+    Uses runsc + default bridge (production config)."""
     client = _ensure_image()
     sandbox = DockerSandbox(docker_client=client)
     config = SandboxConfig(
         image=_IMAGE,
         workspace_path="/tmp",
         skills_path="/tmp",
-        runtime="",
         timeout_seconds=60,
         mem_limit="256m",
         cpu_count=1,
@@ -97,21 +114,20 @@ async def test_sandbox_can_reach_pypi_through_proxy() -> None:
 
 
 @pytest.mark.skipif(
-    not (_docker_available() and _proxy_available()),
-    reason="Docker or egress-proxy not available",
+    not (_docker_available() and _proxy_available() and _runsc_available()),
+    reason="Docker, egress-proxy, or runsc not available",
 )
 @pytest.mark.asyncio
 async def test_sandbox_cannot_reach_arbitrary_internet() -> None:
     """AC-22: Sandbox cannot reach arbitrary internet (e.g. example.com)
-    through the egress proxy. The proxy returns a 403 or connection
-    refused for non-allowlisted hosts."""
+    through the egress proxy. Uses runsc + default bridge (production
+    config)."""
     client = _ensure_image()
     sandbox = DockerSandbox(docker_client=client)
     config = SandboxConfig(
         image=_IMAGE,
         workspace_path="/tmp",
         skills_path="/tmp",
-        runtime="",
         timeout_seconds=30,
         mem_limit="128m",
         cpu_count=1,

@@ -195,7 +195,12 @@ class TestDockerSandbox:
 
         exit_code, output = await sandbox.exec_run("sandbox-1", "git status")
         assert exit_code != 0
-        assert b"command not found" in output
+        assert (
+            b"command not found" in output
+            or b"not found" in output.lower()
+            or b"not a command" in output.lower()
+            or b"no such file" in output.lower()
+        )
         mock_docker_client.containers.get.assert_called_once_with("sandbox-1")
         fake_container.exec_run.assert_called_once_with("git status")
 
