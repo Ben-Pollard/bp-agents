@@ -97,15 +97,13 @@ async def test_pipeline_polls_tracker_and_dispatches_tickets(
     transition_msgs = [
         m for m in records if "ticket TICK-1:" in m or "ticket TICK-2:" in m
     ]
-    assert any("ready ->" in m or "implementing ->" in m for m in transition_msgs)
+    assert any("blocked, reason:" in m for m in transition_msgs)
 
     assert len(tracker.update_calls) > 0, "update_state was never called"
     tick1_calls = [(s, p) for i, s, p in tracker.update_calls if i == "TICK-1"]
     tick2_calls = [(s, p) for i, s, p in tracker.update_calls if i == "TICK-2"]
-    assert ("done", "default") in tick1_calls
-    assert ("done", "default") in tick2_calls
-    assert ("implementing", "default") in tick1_calls
-    assert ("awaiting_review", "default") in tick1_calls
+    assert ("blocked", "default") in tick1_calls
+    assert ("blocked", "default") in tick2_calls
 
     async with AsyncSqliteSaver.from_conn_string(db_path) as checkpointer:
         state1 = await checkpointer.aget_tuple(
@@ -116,8 +114,8 @@ async def test_pipeline_polls_tracker_and_dispatches_tickets(
         )
         assert state1 is not None
         assert state2 is not None
-        assert state1.checkpoint["channel_values"]["status"] == "done"
-        assert state2.checkpoint["channel_values"]["status"] == "done"
+        assert state1.checkpoint["channel_values"]["status"] == "blocked"
+        assert state2.checkpoint["channel_values"]["status"] == "blocked"
 
     Path(db_path).unlink(missing_ok=True)
 

@@ -8,8 +8,60 @@ A collection of personal agents.
 
 ```bash
 cp .env.example .env
+```
+
+### 1. Create a target repository
+
+The orchestrator dispatches agents into a **target project** — a separate git repository where the agent will write code and tests. This must NOT be bp-agents itself (enforced by an NFR guard).
+
+```bash
+# Outside the bp-agents directory
+mkdir -p ~/projects/my-project
+cd ~/projects/my-project
+git init -b main
+git commit --allow-empty -m "initial"
+echo "# My Project" > README.md
+git add README.md && git commit -m "add readme"
+```
+
+Set the absolute path in `.env`:
+
+```bash
+echo "BP_TARGET_REPO_PATH=/home/$(whoami)/projects/my-project" >> .env
+```
+
+### 2. Build the sandbox image
+
+The sandbox image (`symphony-agent:latest`) wraps opencode serve inside a Docker container with minimal tools. Build it from the provided Dockerfile:
+
+```bash
+docker build -t symphony-agent:latest -f Dockerfile.sandbox .
+```
+
+If you prefer a different tag, set `BP_SANDBOX_IMAGE` in `.env`.
+
+### 3. Configure skills path
+
+Skills are copied from bp-agents into the workspace before dispatch. By default the orchestrator looks at `.agents/skills` **relative to the orchestrator's working directory**. When running via Docker Compose, mount your bp-agents root so this path resolves:
+
+```yaml
+volumes:
+  - /home/$(whoami)/projects/bp-agents/.agents:/app/.agents:ro
+```
+
+Or override with an absolute path in `.env`:
+
+```bash
+echo "BP_SKILLS_PATH=/home/$(whoami)/projects/bp-agents/.agents/skills" >> .env
+```
+
+### 4. Start the stack
+
+```bash
 docker compose up
 ```
+
+This starts all services including the orchestrator. When the orchestrator finds a `BP_TARGET_REPO_PATH`, it wires the real TDD pipeline. Without it, the stub pipeline runs and blocks tickets with a clear reason.
 
 ## Dependencies
 

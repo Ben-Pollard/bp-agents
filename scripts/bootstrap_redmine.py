@@ -238,6 +238,10 @@ def _write_env(api_key: str) -> None:
         "REDMINE_PROJECT": BP_PROJECT_ID,
         "EGRESS_PROXY_URL": "http://egress-proxy:8080",
         "BP_POLL_INTERVAL": "5",
+        "BP_SANDBOX_IMAGE": os.getenv("BP_SANDBOX_IMAGE", "symphony-agent:latest"),
+        "BP_TARGET_REPO_PATH": os.getenv("BP_TARGET_REPO_PATH", ""),
+        "BP_SKILLS_PATH": os.getenv("BP_SKILLS_PATH", ".agents/skills"),
+        "BP_SANDBOX_RUNTIME": os.getenv("BP_SANDBOX_RUNTIME", "runsc"),
     }
     lines = []
     if os.path.exists(env_path):
@@ -268,7 +272,7 @@ def _write_env(api_key: str) -> None:
     content = "".join(lines)
     with open(env_path, "w") as f:
         f.write(content)
-    logger.info("Wrote .env with REDMINE_API_KEY and REDMINE_PROJECT")
+    logger.info("Wrote .env with REDMINE_API_KEY, REDMINE_PROJECT, and sandbox config")
 
 
 def main() -> None:

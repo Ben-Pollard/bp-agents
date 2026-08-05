@@ -50,7 +50,7 @@ def _ts(
     ("status", "expected"),
     [
         ("ready", "implement"),
-        ("implementing", "implement_complete"),
+        ("implementing", END),
         ("awaiting_review", "review"),
         ("awaiting_revision", "revise"),
         ("revising", "revise_complete"),
@@ -94,11 +94,13 @@ def test_route_ticket_ignores_blocked_reason_when_already_blocked() -> None:
     assert route_ticket(_ts("blocked", blocked_reason="still blocked")) == END
 
 
-def test_pipeline_advances_ready_to_completion() -> None:
+def test_pipeline_advances_ready_to_blocked_without_sandbox() -> None:
     app = build_ticket_pipeline()
     initial = _ts("ready")
     result = app.invoke(initial, {"configurable": {"thread_id": "TICK-1"}})
-    assert result["status"] == "done"
+    assert result["status"] == "blocked"
+    assert result["blocked_reason"] is not None
+    assert "BP_TARGET_REPO_PATH" in result["blocked_reason"]
 
 
 def test_pipeline_flow_from_awaiting_revision() -> None:

@@ -115,10 +115,17 @@ services:
 
   orchestrator:
     build: .
+    environment:
+      BP_TARGET_REPO_PATH: ${BP_TARGET_REPO_PATH:-}
+      BP_SANDBOX_IMAGE: ${BP_SANDBOX_IMAGE:-symphony-agent:latest}
+      BP_SKILLS_PATH: ${BP_SKILLS_PATH:-/app/.agents/skills}
+      BP_SANDBOX_RUNTIME: ${BP_SANDBOX_RUNTIME:-runsc}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./workspaces:/data/workspaces
       - bp_env:/data/env
+      - ./.agents:/app/.agents:ro
+      - ${BP_TARGET_REPO_PATH:-/dev/null}:${BP_TARGET_REPO_PATH:-/dev/null}:rw
     depends_on:
       postgres:
         condition: service_healthy

@@ -18,6 +18,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_STUB_NOT_CONFIGURED_REASON = (
+    "BP_TARGET_REPO_PATH not configured — set it to a target project "
+    "repository path and ensure BP_SANDBOX_IMAGE is built"
+)
+
 
 def _log(state: TicketPipelineState, to: str) -> None:
     from_ = state["status"]
@@ -58,9 +63,51 @@ def _node(target: str, tracker: "Tracker | None" = None):
     return node_fn
 
 
+def _stub_implement_node(tracker: "Tracker | None" = None):
+    """Stub 'implement' node used when the TDD pipeline is not configured.
+
+    Blocks the ticket instead of silently advancing it through the pipeline
+    to 'done', which would create a false positive without any real agent
+    work (QA finding).
+    """
+
+    if tracker is not None:
+
+        @functools.wraps(lambda: None)
+        async def node_fn(state: TicketPipelineState) -> dict:
+            ticket_id = state["ticket_id"]
+            project = state.get("project", "unknown")
+            logger.info(
+                "ticket %s: blocked, reason: %s",
+                ticket_id,
+                _STUB_NOT_CONFIGURED_REASON,
+            )
+            await tracker.update_state(ticket_id, "blocked", project)
+            return {
+                "status": "blocked",
+                "blocked_reason": _STUB_NOT_CONFIGURED_REASON,
+            }
+
+    else:
+
+        @functools.wraps(lambda: None)
+        def node_fn(state: TicketPipelineState) -> dict:
+            logger.info(
+                "ticket %s: blocked, reason: %s",
+                state["ticket_id"],
+                _STUB_NOT_CONFIGURED_REASON,
+            )
+            return {
+                "status": "blocked",
+                "blocked_reason": _STUB_NOT_CONFIGURED_REASON,
+            }
+
+    node_fn.__name__ = "node_implement"
+    return node_fn
+
+
 ROUTE_MAP: dict[str, str] = {
     "ready": "implement",
-    "implementing": "implement_complete",
     "awaiting_review": "review",
     "awaiting_revision": "revise",
     "revising": "revise_complete",
@@ -114,8 +161,13 @@ def build_ticket_pipeline(
             client=open_code_client,
         )
     else:
-        implement_node = _node("implementing", tracker)
-        builder.add_node("implement_complete", _node("awaiting_review", tracker))
+        implement_node = _stub_implement_node(tracker)
+        logger.warning(
+            "TDD pipeline not configured — sandbox is None. "
+            "Set BP_TARGET_REPO_PATH, BP_SANDBOX_IMAGE, and BP_SKILLS_PATH "
+            "to enable real agent dispatch. %s",
+            _STUB_NOT_CONFIGURED_REASON,
+        )
 
     builder.add_node("implement", implement_node)
     builder.add_node("review", _node("reviewing", tracker))
@@ -131,8 +183,6 @@ def build_ticket_pipeline(
 
     builder.add_conditional_edges(START, route_ticket)
     builder.add_conditional_edges("implement", route_ticket)
-    if not use_tdd:
-        builder.add_conditional_edges("implement_complete", route_ticket)
     builder.add_conditional_edges("review", route_review)
     builder.add_conditional_edges("approve_review", route_ticket)
     builder.add_conditional_edges("request_changes", route_ticket)
