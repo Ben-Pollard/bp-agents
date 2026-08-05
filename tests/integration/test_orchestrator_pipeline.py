@@ -132,7 +132,10 @@ async def test_pipeline_polls_tracker_and_dispatches_tickets(
 
 
 def test_wait_for_dependency_accepts_any_status() -> None:
-    with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
+    with (
+        mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
+        mock.patch("tenacity.nap.sleep"),
+    ):
         mock_get.side_effect = [
             mock.Mock(status_code=404),
             mock.Mock(status_code=500),

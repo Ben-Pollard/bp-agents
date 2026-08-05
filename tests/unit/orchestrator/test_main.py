@@ -52,7 +52,10 @@ class TestWaitForDependency:
             mock_get.assert_called_once_with("http://example.com/health", timeout=5)
 
     def test_retries_on_connect_error(self) -> None:
-        with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
+        with (
+            mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
+            mock.patch("tenacity.nap.sleep"),
+        ):
             mock_get.side_effect = [
                 httpx.ConnectError("refused"),
                 httpx.ConnectError("refused"),
@@ -64,7 +67,10 @@ class TestWaitForDependency:
             assert mock_get.call_count >= 3
 
     def test_retries_on_http_error(self) -> None:
-        with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
+        with (
+            mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
+            mock.patch("tenacity.nap.sleep"),
+        ):
             mock_get.side_effect = [
                 httpx.HTTPError("server error"),
                 mock.Mock(status_code=200),
@@ -99,15 +105,15 @@ class TestMain:
 
         caplog.set_level(logging.INFO)
 
-        with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
+        with (
+            mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
+            mock.patch("tenacity.nap.sleep"),
+        ):
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_get.return_value = mock_response
 
-            with (
-                mock.patch("bp_agents.orchestrator.main._poll_loop"),
-                mock.patch("bp_agents.orchestrator.main.time.sleep"),
-            ):
+            with mock.patch("bp_agents.orchestrator.main._poll_loop"):
                 asyncio.run(main_async(tracker=FakeTracker()))
 
             records = [r.message for r in caplog.records]
@@ -118,14 +124,10 @@ class TestMain:
     def test_main_raises_when_dependency_fails(self) -> None:
         import asyncio
 
-        with (
-            mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
-            mock.patch("bp_agents.orchestrator.main.time.time") as mock_time,
-            mock.patch("bp_agents.orchestrator.main.time.sleep"),
+        with mock.patch(
+            "bp_agents.orchestrator.main.wait_for_dependency",
+            side_effect=RuntimeError("Redmine did not become ready within 120s"),
         ):
-            mock_get.side_effect = httpx.ConnectError("always refused")
-            mock_time.side_effect = [0, 120]
-
             with pytest.raises(
                 RuntimeError, match="Redmine did not become ready within 120s"
             ):

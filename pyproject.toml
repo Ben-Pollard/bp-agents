@@ -13,6 +13,8 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "psycopg>=3.3.4",
     "psycopg-binary>=3.3.4",
+    "python-dotenv>=1.0",
+    "tenacity>=8.0",
 ]
 
 [dependency-groups]

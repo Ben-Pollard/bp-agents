@@ -1,11 +1,18 @@
 import asyncio
 import logging
 import os
-import time
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from tenacity import (
+    RetryError,
+    retry,
+    retry_if_exception_type,
+    stop_after_delay,
+    wait_fixed,
+)
 
 from bp_agents.platform.sandbox.egress import EgressPolicy
 from bp_agents.platform.tracker import Tracker
@@ -17,19 +24,7 @@ logger = logging.getLogger(__name__)
 
 _ENV_PATH = "/data/env/.env"
 
-
-def _load_env_file() -> None:
-    if not os.path.exists(_ENV_PATH):
-        return
-    with open(_ENV_PATH) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip())
-
-
-_load_env_file()
+load_dotenv(dotenv_path=_ENV_PATH)
 
 EGRESS_PROXY_URL = os.getenv("EGRESS_PROXY_URL", "http://egress-proxy:8080")
 REDMINE_BASE_URL = os.getenv("REDMINE_BASE_URL", "http://redmine:3000")
@@ -40,16 +35,20 @@ PIPELINE_DB_PATH = os.getenv("BP_PIPELINE_DB_PATH", "pipeline_checkpoints.db")
 
 
 def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
-    start = time.time()
-    while time.time() - start < timeout:
-        try:
-            r = httpx.get(url, timeout=5)
-            logger.info("%s responded with status %s", name, r.status_code)
-            return
-        except httpx.HTTPError:
-            logger.debug("%s not ready yet, retrying...", name)
-        time.sleep(1)
-    raise RuntimeError("%s did not become ready within %ds" % (name, timeout))
+    @retry(
+        stop=stop_after_delay(timeout),
+        wait=wait_fixed(1),
+        retry=retry_if_exception_type(httpx.HTTPError),
+        reraise=False,
+    )
+    def _probe() -> None:
+        r = httpx.get(url, timeout=5)
+        logger.info("%s responded with status %s", name, r.status_code)
+
+    try:
+        _probe()
+    except RetryError:
+        raise RuntimeError("%s did not become ready within %ds" % (name, timeout))
 
 
 async def _poll_loop(tracker: Tracker, pipeline: Any) -> None:

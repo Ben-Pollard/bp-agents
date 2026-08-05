@@ -4,19 +4,7 @@ from bp_agents.workflows.sdd.contracts import (
     ReviewOutput,
     RevisionOutput,
     TddOutput,
-    Ticket,
 )
-
-
-class SDDFeatureState(TypedDict):
-    feature_id: str
-    project: str
-    branch_name: str | None
-    acs: list[dict]
-    tickets: list[Ticket]
-    ticket_states: dict[str, "TicketPipelineState"]
-    current_stage: str | None
-    blocked_reason: str | None
 
 
 class TicketPipelineState(TypedDict):
