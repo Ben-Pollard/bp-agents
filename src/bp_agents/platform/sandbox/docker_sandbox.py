@@ -36,7 +36,7 @@ class DockerSandbox(Sandbox):
         labels = self._build_labels(config)
         container = await self._create_and_start_container(config, env, labels)
         port = self._extract_port(container)
-        base_url = f"http://localhost:{port}"
+        base_url = f"http://172.17.0.1:{port}"
 
         return SandboxSession(
             container_id=container.id,

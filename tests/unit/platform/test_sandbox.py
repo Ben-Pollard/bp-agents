@@ -64,11 +64,11 @@ def test_sandbox_session_fields() -> None:
     session = SandboxSession(
         container_id="abc",
         port=8080,
-        base_url="http://localhost:8080",
+        base_url="http://172.17.0.1:8080",
     )
     assert session.container_id == "abc"
     assert session.port == 8080
-    assert session.base_url == "http://localhost:8080"
+    assert session.base_url == "http://172.17.0.1:8080"
 
 
 class TestEgressPolicy:
@@ -529,7 +529,7 @@ class TestDockerSandbox:
         session = await sandbox.create(sandbox_config)
 
         assert session.port == 32768
-        assert session.base_url == "http://localhost:32768"
+        assert session.base_url == "http://172.17.0.1:32768"
 
     async def test_create_falls_back_to_default_port(
         self,
@@ -545,7 +545,7 @@ class TestDockerSandbox:
         session = await sandbox.create(sandbox_config)
 
         assert session.port == 8080
-        assert session.base_url == "http://localhost:8080"
+        assert session.base_url == "http://172.17.0.1:8080"
 
     async def test_accepts_egress_policy(self, mock_docker_client: MagicMock) -> None:
         policy = EgressPolicy(allowlist=["custom-only.com"])
