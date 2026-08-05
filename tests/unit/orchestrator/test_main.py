@@ -9,26 +9,13 @@ from bp_agents.orchestrator.main import (
     wait_for_dependency,
 )
 from bp_agents.platform.tracker import Tracker
-from bp_agents.workflows.sdd.contracts import TicketState
 
 
 class FakeTracker(Tracker):
     async def list_ready(self, project: str) -> list[dict]:
         return []
 
-    async def get_item(self, item_id: str, project: str) -> dict:
-        return {
-            "id": item_id,
-            "name": "",
-            "description": None,
-            "state": TicketState.READY.value,
-            "project": project,
-        }
-
     async def update_state(self, item_id: str, state: str, project: str) -> None:
-        pass
-
-    async def add_comment(self, item_id: str, body: str, project: str) -> None:
         pass
 
 

@@ -138,6 +138,3 @@ class DockerSandbox(Sandbox):
         container = self._client.containers.get(container_id)
         result = container.exec_run(cmd)
         return result  # type: ignore[return-value]
-
-
-GVisorSandbox = DockerSandbox

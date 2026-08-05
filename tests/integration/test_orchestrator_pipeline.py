@@ -8,42 +8,21 @@ import pytest
 
 from bp_agents.orchestrator.main import wait_for_dependency
 from bp_agents.platform.tracker import Tracker
-from bp_agents.workflows.sdd.contracts import Ticket, TicketState
+from bp_agents.workflows.sdd.contracts import TicketState
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
 from bp_agents.workflows.sdd.state import initial_ticket_state
 
 
 class FakeTrackerReturns(Tracker):
-    def __init__(self, tickets: list[Ticket]) -> None:
+    def __init__(self, tickets: list[dict]) -> None:
         self.tickets = tickets
         self.update_calls: list[tuple[str, str, str]] = []
 
     async def list_ready(self, project: str) -> list[dict]:
-        return [
-            {
-                "id": t.id,
-                "name": t.name,
-                "description": t.description,
-                "state": t.state.value if isinstance(t.state, TicketState) else t.state,
-                "project": t.project,
-            }
-            for t in self.tickets
-        ]
-
-    async def get_item(self, item_id: str, project: str) -> dict:
-        return {
-            "id": item_id,
-            "name": "",
-            "description": None,
-            "state": TicketState.READY.value,
-            "project": project,
-        }
+        return self.tickets
 
     async def update_state(self, item_id: str, state: str, project: str) -> None:
         self.update_calls.append((item_id, state, project))
-
-    async def add_comment(self, item_id: str, body: str, project: str) -> None:
-        pass
 
 
 @pytest.mark.asyncio
@@ -58,20 +37,20 @@ async def test_pipeline_polls_tracker_and_dispatches_tickets(
 
     tracker = FakeTrackerReturns(
         [
-            Ticket(
-                id="TICK-1",
-                name="Fix login",
-                description=None,
-                state=TicketState.READY,
-                project="project-1",
-            ),
-            Ticket(
-                id="TICK-2",
-                name="Add logout",
-                description=None,
-                state=TicketState.READY,
-                project="project-1",
-            ),
+            {
+                "id": "TICK-1",
+                "name": "Fix login",
+                "description": None,
+                "state": TicketState.READY.value,
+                "project": "project-1",
+            },
+            {
+                "id": "TICK-2",
+                "name": "Add logout",
+                "description": None,
+                "state": TicketState.READY.value,
+                "project": "project-1",
+            },
         ]
     )
 

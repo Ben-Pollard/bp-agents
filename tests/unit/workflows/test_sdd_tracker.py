@@ -74,34 +74,6 @@ async def test_update_state_calls_put() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_item_returns_ticket() -> None:
-    mock_issue = {
-        "id": 1,
-        "project": {"id": 1, "name": "project-1"},
-        "tracker": {"id": 1, "name": "Bug"},
-        "status": {"id": 1, "name": "ready"},
-        "subject": "Implement login",
-        "description": "Add login flow",
-        "created_on": "2024-01-01T00:00:00Z",
-        "updated_on": "2024-01-01T00:00:00Z",
-    }
-
-    transport = httpx.MockTransport(make_handler({"issue": mock_issue}))
-    client = httpx.AsyncClient(transport=transport, base_url="http://redmine:3000")
-    tracker = RedmineTracker(
-        base_url="http://redmine:3000",
-        api_key="test-key",
-        client=client,
-    )
-    _populate_maps(tracker)
-
-    ticket = await tracker.get_item("1", "project-1")
-
-    assert ticket["id"] == "1"
-    assert ticket["name"] == "Implement login"
-
-
-@pytest.mark.asyncio
 async def test_ensure_statuses_uses_existing() -> None:
     existing_statuses = [
         {"id": 1, "name": "ready"},

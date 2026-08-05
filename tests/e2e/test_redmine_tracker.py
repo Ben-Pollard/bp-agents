@@ -37,17 +37,3 @@ async def test_redmine_tracker_e2e_update_state() -> None:
     tickets = await tracker.list_ready("default")
     if tickets:
         await tracker.update_state(tickets[0]["id"], "implementing", "default")
-
-
-@pytest.mark.skipif(not _redmine_available(), reason="Redmine not running")
-@pytest.mark.asyncio
-async def test_redmine_tracker_e2e_get_item() -> None:
-    tracker = RedmineTracker(
-        base_url="http://localhost:8082",
-        api_key="",
-        client=httpx.AsyncClient(base_url="http://localhost:8082"),
-    )
-    tickets = await tracker.list_ready("default")
-    if tickets:
-        ticket = await tracker.get_item(tickets[0]["id"], "default")
-        assert ticket["id"] == tickets[0]["id"]
