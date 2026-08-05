@@ -12,3 +12,5 @@ state.json
 .playwright-mcp/
 
 .scratch/orchestrator/outcomes/
+gvisor.tar.bz2
+gvisor.tar.bz2.sha512

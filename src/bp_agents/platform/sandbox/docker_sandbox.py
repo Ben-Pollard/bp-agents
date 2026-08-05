@@ -74,12 +74,14 @@ class DockerSandbox(Sandbox):
             ports={8080: None},
             mem_limit=config.mem_limit,
             nano_cpus=int(config.cpu_count * 1e9),
-            network=config.network,
             volumes={
                 config.workspace_path: {"bind": "/data/workspace", "mode": "ro"},
                 config.skills_path: {"bind": "/data/skills", "mode": "ro"},
             },
         )
+
+        if config.network:
+            create_kwargs["network"] = config.network
 
         if config.runtime == "runsc":
             create_kwargs["runtime"] = "runsc"

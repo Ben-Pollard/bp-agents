@@ -11,9 +11,9 @@ class SandboxConfig:
     timeout_seconds: int = 300
     mem_limit: str = "512m"
     cpu_count: int = 2
-    network: str = "bp_agents"
-    http_proxy: str = "http://egress-proxy:8080"
-    https_proxy: str = "http://egress-proxy:8080"
+    network: str = ""
+    http_proxy: str = "http://172.17.0.1:8080"
+    https_proxy: str = "http://172.17.0.1:8080"
     no_proxy: str = "localhost,127.0.0.1"
 
 

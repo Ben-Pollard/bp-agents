@@ -124,7 +124,7 @@ def test_sandbox_lifecycle_with_policy() -> None:
     assert session.container_id == "sandbox-abc"
 
     assert "runsc" == client.containers.create.call_args[1]["runtime"]
-    assert client.containers.create.call_args[1]["network"] == "bp_agents"
+    assert "network" not in client.containers.create.call_args[1]
 
     client.containers.get.return_value = _container_with_status("running")
     assert _run(sandbox.is_running(session.container_id)) is True

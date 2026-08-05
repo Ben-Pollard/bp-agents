@@ -11,6 +11,26 @@ cp .env.example .env
 docker compose up
 ```
 
+## Dependencies
+
+### gVisor (runsc)
+
+Docker runtime for agent sandbox isolation. Required for the `platform.sandbox` module (`--runtime=runsc`).
+
+Install via tarball:
+
+```bash
+ARCH=$(uname -m)
+URL=https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}
+wget ${URL}/gvisor.tar.bz2 ${URL}/gvisor.tar.bz2.sha512
+sha512sum -c gvisor.tar.bz2.sha512
+sudo tar -xjf gvisor.tar.bz2 -C /usr/local/bin
+sudo /usr/local/bin/runsc install
+sudo systemctl reload docker
+```
+
+Verify: `docker run --rm --runtime=runsc hello-world`
+
 ## Services
 
 All services start via `docker compose up`.

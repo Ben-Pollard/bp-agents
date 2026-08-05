@@ -36,7 +36,7 @@ def test_sandbox_config_defaults() -> None:
     assert config.timeout_seconds == 300
     assert config.mem_limit == "512m"
     assert config.cpu_count == 2
-    assert config.network == "bp_agents"
+    assert config.network == ""
 
 
 def test_sandbox_config_custom_network() -> None:
@@ -309,8 +309,8 @@ class TestDockerSandbox:
         _call_env = mock_docker_client.containers.create.call_args[1].get(
             "environment", {}
         )
-        assert _call_env["HTTP_PROXY"] == "http://egress-proxy:8080"
-        assert _call_env["HTTPS_PROXY"] == "http://egress-proxy:8080"
+        assert _call_env["HTTP_PROXY"] == "http://172.17.0.1:8080"
+        assert _call_env["HTTPS_PROXY"] == "http://172.17.0.1:8080"
         assert _call_env["NO_PROXY"] == "localhost,127.0.0.1"
         assert _call_env["OPENCODE_PORT"] == "8080"
 
