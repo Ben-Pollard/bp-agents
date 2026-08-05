@@ -18,33 +18,32 @@ def _load_compose() -> dict:
 
 
 def test_compose_egress_proxy_enforces_allowlist() -> None:
-    """The mitmproxy egress proxy must be configured with --allow-hosts
-    filters so arbitrary internet is not reachable (AC-21/AC-22)."""
+    """The mitmproxy egress proxy must be configured with a blocking addon
+    script so arbitrary internet is not reachable (AC-21/AC-22)."""
     compose = _load_compose()
     command = compose["services"]["egress-proxy"]["command"]
     command_str = " ".join(command) if isinstance(command, list) else command
-    assert "--allow-hosts" in command_str, "egress-proxy must enforce an allowlist"
+    assert "-s" in command_str, "egress-proxy must have an addon script"
+    assert "egress_blocker.py" in command_str, "addon script must be egress_blocker.py"
 
 
 def test_compose_allowlist_covers_default_allowlist() -> None:
     """Every host in the EgressPolicy default allowlist must be present in
-    the mitmproxy configuration, otherwise a permitted destination would be
-    blocked by the proxy while the policy permits it."""
-    compose = _load_compose()
-    command = compose["services"]["egress-proxy"]["command"]
-    command_str = " ".join(command) if isinstance(command, list) else command
-    compose_hosts = set()
-    for token in command_str.split():
-        if token == "--allow-hosts":
-            continue
-        if token.startswith("--"):
-            continue
-        compose_hosts.add(token.replace("\\.", "."))
+    the egress blocker addon script, otherwise a permitted destination would
+    be blocked by the proxy while the policy permits it."""
+    root = Path(__file__).resolve().parents[2]
+    script = (root / "scripts" / "egress_blocker.py").read_text()
+    script_hosts = set()
+    for line in script.splitlines():
+        line = line.strip()
+        if line.startswith('"') and line.endswith('",'):
+            host = line.strip('",')
+            script_hosts.add(host)
 
     default_hosts = set(EgressPolicy().allowlist)
     assert (
-        default_hosts <= compose_hosts
-    ), f"missing in compose allowlist: {default_hosts - compose_hosts}"
+        default_hosts <= script_hosts
+    ), f"missing in egress_blocker.py: {default_hosts - script_hosts}"
 
 
 @pytest.fixture

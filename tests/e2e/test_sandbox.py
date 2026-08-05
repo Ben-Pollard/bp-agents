@@ -103,7 +103,7 @@ async def test_sandbox_can_reach_pypi_through_proxy() -> None:
 @pytest.mark.asyncio
 async def test_sandbox_cannot_reach_arbitrary_internet() -> None:
     """AC-22: Sandbox cannot reach arbitrary internet (e.g. example.com)
-    through the egress proxy. The proxy returns a 502 or connection
+    through the egress proxy. The proxy returns a 403 or connection
     refused for non-allowlisted hosts."""
     client = _ensure_image()
     sandbox = DockerSandbox(docker_client=client)
@@ -123,7 +123,7 @@ async def test_sandbox_cannot_reach_arbitrary_internet() -> None:
             "curl -s -o /dev/null -w '%{http_code}' https://example.com 2>&1",
         )
         assert exit_code != 0 or output.strip() in (
-            b"502",
+            b"403",
             b"000",
         ), f"expected proxy to block example.com, got: {output!r}"
     finally:
