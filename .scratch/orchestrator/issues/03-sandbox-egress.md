@@ -1,4 +1,4 @@
-Status: in-progress
+Status: ready-for-human
 
 # 03 — Sandbox adapter + Egress proxy
 
@@ -122,3 +122,22 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 - #01 Infrastructure + Contracts
 
 ## Outcome
+
+Escalated to human. QA loop exceeded review rounds and the sole remaining AC failure is environmental, not a code defect.
+
+**Remaining failing AC:** `GVisorSandbox.create(config)` returns a running container with gVisor runtime (`runsc`).
+
+**Blocker:** gVisor `runsc` runtime is not installed on the Docker host (`docker run --runtime=runsc` → `unknown or invalid runtime name: runsc`). Only `runc` is available. The code correctly raises `APIError` ("runsc runtime unavailable") and does not fall back, per ADR-0002's open risk. A running gVisor container cannot be demonstrated in this environment.
+
+**All other ACs verified passing** (live system):
+- PyPI reachable through proxy (AC-21) — `pip install --dry-run requests` succeeds
+- Arbitrary internet blocked (AC-22) — example.com → URLError, proxy logs `blocked egress: example.com from ticket <unknown>` with timestamp
+- Git commands fail in sandbox (AC-23) — `git status` → exit 127, "executable file not found"
+- `destroy(container_id)` removes container; `list_containers(label_filter)` finds by label
+- Egress allowlist configurable via `MITMPROXY_ALLOWLIST` env var and logged on startup
+
+**Test suite:** lint clean, 82 unit tests, 11 integration tests, E2E tests pass.
+
+**Action needed:** Install gVisor `runsc` on the Docker host (or use a gVisor-enabled environment), then re-run QA to confirm the runsc AC. See `docs/architecture/gap-analysis.md` and ADR-0002.
+
+Outcome artifacts: `.scratch/orchestrator/outcomes/implement-outcome.json`, `review-outcome.json`, `reduction-outcome.json`, `verify-outcome.json`.
