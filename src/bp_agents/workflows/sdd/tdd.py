@@ -66,6 +66,7 @@ class TddNode:
         skills_path: str,
         tracker: "Tracker | None" = None,
         client: OpenCodeClient | None = None,
+        max_retries: int = 3,
     ) -> None:
         self._sandbox = sandbox
         self._sandbox_config = sandbox_config
@@ -73,6 +74,7 @@ class TddNode:
         self._skills_path = skills_path
         self._tracker = tracker
         self._client = client
+        self._max_retries = max_retries
 
     async def __call__(self, state: TicketPipelineState) -> dict:
         ticket_id = state["ticket_id"]
@@ -113,42 +115,67 @@ class TddNode:
             else:
                 client = OpenCodeClient(session.base_url)
             try:
-                oc_session = await client.create_session(agent="builder")
-                await client.prompt(oc_session, json.dumps(input_contract))
-                await client.wait(oc_session)
+                for attempt in range(1, self._max_retries + 1):
+                    oc_session = await client.create_session(agent="builder")
+                    await client.prompt(oc_session, json.dumps(input_contract))
+                    await client.wait(oc_session)
+
+                    try:
+                        tdd_output = self._read_and_validate_outcome(
+                            ticket_id, outcome_host_path
+                        )
+                    except OutcomeMissingError:
+                        return {
+                            "status": "blocked",
+                            "blocked_reason": "agent: no outcome file written by agent",
+                        }
+
+                    logger.info(
+                        "ticket %s: tdd output  contract=%s",
+                        ticket_id,
+                        json.dumps(tdd_output),
+                    )
+
+                    if self._tracker is not None:
+                        await self._tracker.add_comment(
+                            ticket_id, json.dumps(tdd_output), project
+                        )
+
+                    if tdd_output["status"] == "FAIL":
+                        if attempt < self._max_retries:
+                            logger.info(
+                                "ticket %s: transient fail, retrying (%d/%d)",
+                                ticket_id,
+                                attempt,
+                                self._max_retries,
+                            )
+                            continue
+                        logger.info(
+                            "ticket %s: transient fail, exhausted %d retries",
+                            ticket_id,
+                            self._max_retries,
+                        )
+                        return await self._handle_non_complete(
+                            state,
+                            tdd_output,
+                            "fail",
+                            "agent: transient failure: ",
+                            "agent: transient failure",
+                        )
+
+                    if tdd_output["status"] == "BLOCKED":
+                        return await self._handle_non_complete(
+                            state,
+                            tdd_output,
+                            "blocked",
+                            "agent: ",
+                            "agent: blocked",
+                        )
+
+                    return await self._handle_complete(state, tdd_output, branch_name)
             finally:
                 if self._client is None:
                     await client.close()
-
-            try:
-                tdd_output = self._read_and_validate_outcome(
-                    ticket_id, outcome_host_path
-                )
-            except OutcomeMissingError:
-                return {
-                    "status": "blocked",
-                    "blocked_reason": "agent: no outcome file written by agent",
-                }
-
-            logger.info(
-                "ticket %s: tdd output  contract=%s",
-                ticket_id,
-                json.dumps(tdd_output),
-            )
-
-            if self._tracker is not None:
-                await self._tracker.add_comment(
-                    ticket_id, json.dumps(tdd_output), project
-                )
-
-            if tdd_output["status"] == "FAIL":
-                logger.info("ticket %s: transient fail, will retry", ticket_id)
-                return await self._handle_fail(state, tdd_output)
-
-            if tdd_output["status"] == "BLOCKED":
-                return await self._handle_blocked(state, tdd_output)
-
-            return await self._handle_complete(state, tdd_output, branch_name)
         finally:
             await self._sandbox.destroy(session.container_id)
 
@@ -204,37 +231,19 @@ class TddNode:
             raise OutcomeMissingError(ticket_id)
         return validate_tdd_output(output_data)
 
-    async def _handle_fail(
-        self, state: TicketPipelineState, tdd_output: TddOutput
+    async def _handle_non_complete(
+        self,
+        state: TicketPipelineState,
+        tdd_output: TddOutput,
+        log_kind: str,
+        reason_prefix: str,
+        default_reason: str,
     ) -> dict:
         ticket_id = state["ticket_id"]
         concerns = tdd_output.get("concerns") or []
         detail = "; ".join(concerns).strip()
-        reason = (
-            f"agent: transient failure: {detail}"
-            if detail
-            else "agent: transient failure"
-        )
-        logger.info("ticket %s: fail, reason: %s", ticket_id, reason)
-        self._clean_artifacts()
-        if self._tracker is not None:
-            await self._tracker.update_state(
-                ticket_id, "blocked", state.get("project", "unknown")
-            )
-        return {
-            "status": "blocked",
-            "blocked_reason": reason,
-            "tdd_output": tdd_output,
-        }
-
-    async def _handle_blocked(
-        self, state: TicketPipelineState, tdd_output: TddOutput
-    ) -> dict:
-        ticket_id = state["ticket_id"]
-        concerns = tdd_output.get("concerns") or []
-        detail = "; ".join(concerns).strip()
-        reason = f"agent: {detail}" if detail else "agent: blocked"
-        logger.info("ticket %s: blocked, reason: %s", ticket_id, reason)
+        reason = f"{reason_prefix}{detail}" if detail else default_reason
+        logger.info("ticket %s: %s, reason: %s", ticket_id, log_kind, reason)
         self._clean_artifacts()
         if self._tracker is not None:
             await self._tracker.update_state(
