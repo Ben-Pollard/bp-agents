@@ -120,11 +120,23 @@ async def test_sandbox_cannot_reach_arbitrary_internet() -> None:
     try:
         exit_code, output = await sandbox.exec_run(
             session.container_id,
-            "curl -s -o /dev/null -w '%{http_code}' https://example.com 2>&1",
+            (
+                'python -c "'
+                "import urllib.request, urllib.error;"
+                "try:"
+                "  r = urllib.request.urlopen('https://example.com', timeout=10);"
+                "  print(r.status)"
+                "except urllib.error.HTTPError as e:"
+                "  print('HTTP_ERROR', e.code)"
+                "except Exception as e:"
+                "  print('UNEXPECTED', type(e).__name__)"
+                '" 2>&1'
+            ),
         )
-        assert exit_code != 0 or output.strip() in (
-            b"403",
-            b"000",
-        ), f"expected proxy to block example.com, got: {output!r}"
+        output_str = output.decode().strip()
+        assert exit_code == 0, f"python command failed: {output_str!r}"
+        assert (
+            "HTTP_ERROR 403" in output_str
+        ), f"expected proxy to block example.com with 403, got: {output_str!r}"
     finally:
         await sandbox.destroy(session.container_id)

@@ -29,21 +29,29 @@ def test_compose_egress_proxy_enforces_allowlist() -> None:
 
 def test_compose_allowlist_covers_default_allowlist() -> None:
     """Every host in the EgressPolicy default allowlist must be present in
-    the egress blocker addon script, otherwise a permitted destination would
-    be blocked by the proxy while the policy permits it."""
+    the egress blocker addon script's DEFAULT_ALLOWLIST, otherwise a
+    permitted destination would be blocked by the proxy while the policy
+    permits it."""
     root = Path(__file__).resolve().parents[2]
     script = (root / "scripts" / "egress_blocker.py").read_text()
     script_hosts = set()
+    in_default = False
     for line in script.splitlines():
-        line = line.strip()
-        if line.startswith('"') and line.endswith('",'):
-            host = line.strip('",')
-            script_hosts.add(host)
+        stripped = line.strip()
+        if stripped == "DEFAULT_ALLOWLIST = [":
+            in_default = True
+            continue
+        if in_default:
+            if stripped == "]":
+                break
+            if stripped.startswith('"') and stripped.endswith('",'):
+                host = stripped.strip('",')
+                script_hosts.add(host)
 
     default_hosts = set(EgressPolicy().allowlist)
     assert (
         default_hosts <= script_hosts
-    ), f"missing in egress_blocker.py: {default_hosts - script_hosts}"
+    ), f"missing in egress_blocker.py DEFAULT_ALLOWLIST: {default_hosts - script_hosts}"
 
 
 def test_egress_blocker_logs_ticket_unknown_suffix() -> None:
@@ -56,6 +64,21 @@ def test_egress_blocker_logs_ticket_unknown_suffix() -> None:
     assert (
         "from ticket <unknown>" in script
     ), "egress_blocker.py must log 'from ticket <unknown>' suffix"
+
+
+def test_egress_blocker_reads_env_var() -> None:
+    """The egress blocker addon script must read the allowlist from the
+    MITMPROXY_ALLOWLIST environment variable (comma-separated), falling back
+    to DEFAULT_ALLOWLIST when the env var is not set. This verifies the
+    config mechanism required by AC-21."""
+    root = Path(__file__).resolve().parents[2]
+    script = (root / "scripts" / "egress_blocker.py").read_text()
+    assert 'os.environ.get("MITMPROXY_ALLOWLIST")' in script or (
+        'os.getenv("MITMPROXY_ALLOWLIST")' in script
+    ), "egress_blocker.py must read MITMPROXY_ALLOWLIST env var"
+    assert (
+        "DEFAULT_ALLOWLIST" in script
+    ), "egress_blocker.py must define DEFAULT_ALLOWLIST as fallback"
 
 
 @pytest.fixture

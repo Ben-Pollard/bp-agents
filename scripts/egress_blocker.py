@@ -1,8 +1,9 @@
 import logging
+import os
 
 from mitmproxy import http
 
-ALLOWLIST = [
+DEFAULT_ALLOWLIST = [
     "api.openai.com",
     "api.anthropic.com",
     "api.openrouter.ai",
@@ -15,6 +16,14 @@ ALLOWLIST = [
 ]
 
 logger = logging.getLogger(__name__)
+
+_env_allowlist = os.environ.get("MITMPROXY_ALLOWLIST")
+if _env_allowlist:
+    ALLOWLIST = [h.strip() for h in _env_allowlist.split(",") if h.strip()]
+else:
+    ALLOWLIST = list(DEFAULT_ALLOWLIST)
+
+logger.info("egress allowlist: %s", ALLOWLIST)
 
 
 def _is_allowed(host: str) -> bool:
