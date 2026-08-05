@@ -117,6 +117,7 @@ async def main_async(
             workspace_path=target_repo_path,
             skills_path=skills_path,
             runtime=SANDBOX_RUNTIME,
+            command=["opencode", "serve", "--port", "8080", "--hostname", "0.0.0.0"],
         )
 
     logger.info("orchestrator ready")
