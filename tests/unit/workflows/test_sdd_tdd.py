@@ -521,7 +521,7 @@ class TestTddNode:
         with pytest.raises(RuntimeError, match="bp-agents"):
             node._prepare_workspace()
 
-    async def test_ensure_feature_branch_raises_on_total_failure(
+    async def test_ensure_feature_branch_auto_inits_non_repo(
         self,
         target_repo: Path,
         skills_dir: Path,
@@ -539,8 +539,26 @@ class TestTddNode:
             tracker=tracker,
         )
 
-        with pytest.raises(RuntimeError, match="Failed to create or checkout"):
-            node._ensure_feature_branch("TICK-99")
+        branch = node._ensure_feature_branch("TICK-99")
+        assert branch == "feat/tick-99"
+
+        branch_out = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=non_repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert branch_out.stdout.strip() == "feat/tick-99"
+
+        log = subprocess.run(
+            ["git", "log", "--oneline", "-1"],
+            cwd=non_repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "initial commit" in log.stdout
 
     async def test_injected_client_used_instead_of_creating_one(
         self,

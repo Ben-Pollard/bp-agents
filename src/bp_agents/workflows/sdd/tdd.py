@@ -197,6 +197,26 @@ class TddNode:
 
     def _ensure_feature_branch(self, ticket_id: str) -> str:
         branch_name = f"feat/{ticket_id.lower()}"
+        repo_path = self._target_repo_path
+
+        os.makedirs(repo_path, exist_ok=True)
+        try:
+            _run_git(repo_path, "rev-parse", "--git-dir")
+        except subprocess.CalledProcessError:
+            _run_git(repo_path, "init")
+            _run_git(repo_path, "checkout", "-b", "main")
+            _run_git(
+                repo_path,
+                "-c",
+                "user.name=bp-agents",
+                "-c",
+                "user.email=bp-agents@localhost",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "initial commit",
+            )
+
         try:
             _run_git(self._target_repo_path, "checkout", "-b", branch_name)
         except subprocess.CalledProcessError:
