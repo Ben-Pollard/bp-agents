@@ -17,6 +17,10 @@ class PromptResult:
     admitted: bool
 
 
+def _unwrap_payload(data: dict) -> dict:
+    return data.get("data", data)
+
+
 class OpenCodeClient:
     def __init__(self, base_url: str, client: httpx.AsyncClient | None = None) -> None:
         self.base_url = base_url.rstrip("/")
@@ -31,16 +35,16 @@ class OpenCodeClient:
             payload["agent"] = agent
         resp = await self._client.post("/api/session", json=payload)
         resp.raise_for_status()
-        data = resp.json()
+        data = _unwrap_payload(resp.json())
         return Session(session_id=data["id"], base_url=self.base_url)
 
     async def prompt(self, session: Session, text: str) -> PromptResult:
         resp = await self._client.post(
             f"/api/session/{session.session_id}/prompt",
-            json={"prompt": text},
+            json={"prompt": {"text": text}},
         )
         resp.raise_for_status()
-        data = resp.json()
+        data = _unwrap_payload(resp.json())
         return PromptResult(
             prompt_id=data.get("id", ""),
             admitted=True,
@@ -59,12 +63,12 @@ class OpenCodeClient:
     async def session_status(self, session: Session) -> dict:
         resp = await self._client.get(f"/api/session/{session.session_id}")
         resp.raise_for_status()
-        return resp.json()
+        return _unwrap_payload(resp.json())
 
     async def wait(self, session: Session) -> dict:
         resp = await self._client.post(f"/api/session/{session.session_id}/wait")
         resp.raise_for_status()
-        return resp.json()
+        return _unwrap_payload(resp.json())
 
     async def close(self) -> None:
         await self._client.aclose()

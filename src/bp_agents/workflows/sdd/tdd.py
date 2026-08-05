@@ -159,8 +159,8 @@ class TddNode:
                             state,
                             tdd_output,
                             "fail",
-                            "agent: transient failure: ",
-                            "agent: transient failure",
+                            "auto: transient failure: ",
+                            "auto: transient failure",
                         )
 
                     if tdd_output["status"] == "BLOCKED":
