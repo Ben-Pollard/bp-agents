@@ -25,7 +25,9 @@ class OpenCodeClient:
         if client is not None:
             self._client = client
         else:
-            self._client = httpx.AsyncClient(base_url=self.base_url)
+            self._client = httpx.AsyncClient(
+                base_url=self.base_url, timeout=SESSION_TIMEOUT
+            )
 
     async def auth_set(self, provider_id: str, api_key: str) -> bool:
         resp = await self._client.put(
