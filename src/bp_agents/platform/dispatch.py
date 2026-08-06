@@ -10,7 +10,7 @@ from bp_agents.platform.agent_config import AgentConfig, to_opencode_json
 from bp_agents.platform.sandbox.base import Sandbox
 from bp_agents.platform.sandbox.config import SandboxConfig
 
-_CREDENTIAL_KEYS = {
+CREDENTIAL_KEYS = {
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
     "OPENROUTER_API_KEY",
@@ -38,6 +38,8 @@ MCP_DEFS: dict = {}
 OUTCOME_FILENAME = "outcome.json"
 HEALTH_CHECK_RETRIES = 30
 HEALTH_CHECK_INTERVAL = 1.0
+SESSION_POLL_INTERVAL = 2.0
+SESSION_TIMEOUT = 600
 
 
 async def _wait_for_health(
@@ -55,6 +57,24 @@ async def _wait_for_health(
                 pass
             await asyncio.sleep(HEALTH_CHECK_INTERVAL)
     return False
+
+
+async def _wait_for_session_completion(
+    client: OpenCodeClient,
+    session,
+    timeout: float = SESSION_TIMEOUT,
+) -> dict:
+    elapsed = 0.0
+    while elapsed < timeout:
+        status = await client.session_status(session)
+        state = status.get("state", "running")
+        if state != "running":
+            return status
+        await asyncio.sleep(SESSION_POLL_INTERVAL)
+        elapsed += SESSION_POLL_INTERVAL
+    raise TimeoutError(
+        f"session {session.session_id} did not complete within {timeout}s"
+    )
 
 
 async def dispatch(
@@ -92,9 +112,7 @@ async def dispatch(
         runtime=sandbox_config.runtime,
         workspace_mode="rw",
         env={
-            **{
-                k: v for k, v in sandbox_config.env.items() if k not in _CREDENTIAL_KEYS
-            },
+            **{k: v for k, v in sandbox_config.env.items() if k not in CREDENTIAL_KEYS},
             "outcome_path": outcome_path,
         },
         timeout_seconds=sandbox_config.timeout_seconds,
@@ -111,6 +129,7 @@ async def dispatch(
     sandbox_session = await sandbox.create(cfg)
     own_client = opencode_client is None
     client = opencode_client or OpenCodeClient(sandbox_session.base_url)
+    oc_session = None
 
     try:
         healthy = await _wait_for_health(sandbox_session.base_url)
@@ -135,6 +154,8 @@ async def dispatch(
             config.tools,
         )
 
+        await _wait_for_session_completion(client, oc_session)
+
         outcome_host_path = os.path.join(workspace, OUTCOME_FILENAME)
         if not os.path.exists(outcome_host_path):
             raise FileNotFoundError(f"Outcome file not found at {outcome_host_path}")
@@ -145,4 +166,6 @@ async def dispatch(
     finally:
         if own_client:
             await client.close()
+        if oc_session is not None:
+            await client.abort(oc_session)
         await sandbox.destroy(sandbox_session.container_id)

@@ -24,7 +24,7 @@ def test_sandbox_is_abstract() -> None:
 
 
 def test_sandbox_has_abstract_methods() -> None:
-    methods = ["create", "is_running", "destroy", "list_containers"]
+    methods = ["create", "is_running", "destroy"]
     for m in methods:
         assert hasattr(Sandbox, m)
         assert getattr(Sandbox, m).__isabstractmethod__
@@ -298,21 +298,6 @@ class TestDockerSandbox:
         )
 
         await sandbox.destroy("abc123")
-
-    async def test_list_containers_filters_by_label(
-        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
-    ) -> None:
-        c1, c2 = MagicMock(), MagicMock()
-        c1.id = "id1"
-        c2.id = "id2"
-        mock_docker_client.containers.list.return_value = [c1, c2]
-
-        result = await sandbox.list_containers({"image": "test-image:latest"})
-
-        assert result == ["id1", "id2"]
-        mock_docker_client.containers.list.assert_called_once_with(
-            filters={"label": ["bp_agents.sandbox.image=test-image:latest"]}
-        )
 
     async def test_create_sets_env_with_proxy_defaults(
         self,

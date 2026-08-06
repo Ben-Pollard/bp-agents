@@ -1,9 +1,24 @@
 from bp_agents.platform.agent_config import AgentConfig
 
+
+def _skill_config(
+    model: str = "openrouter/deepseek/deepseek-v4-flash",
+    provider: str = "openrouter",
+    permissions: dict | None = None,
+    tools: dict[str, bool] | None = None,
+    mcps: dict[str, bool] | None = None,
+) -> AgentConfig:
+    return AgentConfig(
+        model=model,
+        provider=provider,
+        permissions=permissions or {},
+        tools=tools or {},
+        mcps=mcps or {},
+    )
+
+
 SKILL_CONFIGS: dict[str, AgentConfig] = {
-    "tdd": AgentConfig(
-        model="openrouter/deepseek/deepseek-v4-flash",
-        provider="openrouter",
+    "tdd": _skill_config(
         permissions={
             "read": {"*": "allow"},
             "bash": {"*": "allow"},
@@ -16,11 +31,8 @@ SKILL_CONFIGS: dict[str, AgentConfig] = {
             "task": False,
             "webfetch": False,
         },
-        mcps={},
     ),
-    "code_review": AgentConfig(
-        model="openrouter/deepseek/deepseek-v4-flash",
-        provider="openrouter",
+    "code_review": _skill_config(
         permissions={
             "read": {"*": "allow"},
             "bash": {"*": "allow"},
@@ -33,11 +45,8 @@ SKILL_CONFIGS: dict[str, AgentConfig] = {
             "task": False,
             "webfetch": False,
         },
-        mcps={},
     ),
-    "revision": AgentConfig(
-        model="openrouter/deepseek/deepseek-v4-flash",
-        provider="openrouter",
+    "revision": _skill_config(
         permissions={
             "read": {"*": "allow"},
             "bash": {"*": "allow"},
@@ -50,15 +59,9 @@ SKILL_CONFIGS: dict[str, AgentConfig] = {
             "task": False,
             "webfetch": False,
         },
-        mcps={},
     ),
-    "minimizing_code": AgentConfig(
-        model="openrouter/deepseek/deepseek-v4-flash",
-        provider="openrouter",
-        permissions={
-            "read": {"*": "allow"},
-            "edit": {"*": "deny"},
-        },
+    "minimizing_code": _skill_config(
+        permissions={"read": {"*": "allow"}, "edit": {"*": "deny"}},
         tools={
             "bash": True,
             "read": True,
@@ -66,36 +69,15 @@ SKILL_CONFIGS: dict[str, AgentConfig] = {
             "task": False,
             "webfetch": False,
         },
-        mcps={},
     ),
-    "behavioral_verify": AgentConfig(
+    "behavioral_verify": _skill_config(
         model="openrouter/anthropic/claude-sonnet-4",
-        provider="openrouter",
-        permissions={
-            "read": {"*": "allow"},
-            "bash": {"*": "allow"},
-        },
-        tools={
-            "bash": True,
-            "read": True,
-            "task": False,
-            "webfetch": False,
-        },
+        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}},
+        tools={"bash": True, "read": True, "task": False, "webfetch": False},
         mcps={"playwright": True},
     ),
-    "deterministic_gate": AgentConfig(
-        model="openrouter/deepseek/deepseek-v4-flash",
-        provider="openrouter",
-        permissions={
-            "read": {"*": "allow"},
-            "bash": {"*": "allow"},
-        },
-        tools={
-            "bash": True,
-            "read": True,
-            "edit": False,
-            "task": False,
-        },
-        mcps={},
+    "deterministic_gate": _skill_config(
+        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}},
+        tools={"bash": True, "read": True, "edit": False, "task": False},
     ),
 }

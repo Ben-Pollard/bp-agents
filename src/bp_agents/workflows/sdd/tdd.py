@@ -302,9 +302,3 @@ class TddNode:
         opencode_json = os.path.join(self._target_repo_path, "opencode.json")
         if os.path.exists(opencode_json):
             os.remove(opencode_json)
-
-
-class OutcomeMissingError(Exception):
-    def __init__(self, ticket_id: str) -> None:
-        self.ticket_id = ticket_id
-        super().__init__(f"ticket {ticket_id}: no outcome file written by agent")

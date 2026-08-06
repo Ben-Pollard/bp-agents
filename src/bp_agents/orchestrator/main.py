@@ -14,6 +14,7 @@ from tenacity import (
     wait_fixed,
 )
 
+from bp_agents.platform.dispatch import CREDENTIAL_KEYS
 from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
 from bp_agents.platform.sandbox.egress import EgressPolicy
@@ -113,13 +114,7 @@ async def main_async(
     if target_repo_path:
         sandbox = DockerSandbox(egress_policy=egress_policy)
         sandbox_env = {}
-        for key in (
-            "OPENAI_API_KEY",
-            "ANTHROPIC_API_KEY",
-            "OPENROUTER_API_KEY",
-            "LANGFUSE_PUBLIC_KEY",
-            "LANGFUSE_SECRET_KEY",
-        ):
+        for key in CREDENTIAL_KEYS:
             val = os.getenv(key)
             if val:
                 sandbox_env[key] = val

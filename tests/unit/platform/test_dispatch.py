@@ -72,12 +72,20 @@ async def test_dispatch_writes_opencode_json(
     oc_client.auth_set = AsyncMock(return_value=True)
     oc_client.create_session = AsyncMock(return_value=MagicMock(session_id="sess-1"))
     oc_client.send_message = AsyncMock(return_value={"state": "completed"})
+    oc_client.session_status = AsyncMock(
+        return_value={"id": "sess-1", "state": "completed"}
+    )
+    oc_client.abort = AsyncMock(return_value=True)
     oc_client.close = AsyncMock()
 
     with (
         patch("bp_agents.platform.dispatch.OpenCodeClient", return_value=oc_client),
         patch(
             "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
+        ),
+        patch(
+            "bp_agents.platform.dispatch._wait_for_session_completion",
+            AsyncMock(return_value={"state": "completed"}),
         ),
     ):
         result = await dispatch(
@@ -175,12 +183,20 @@ async def test_dispatch_injects_credentials(
     oc_client.auth_set = AsyncMock(return_value=True)
     oc_client.create_session = AsyncMock(return_value=MagicMock(session_id="sess-1"))
     oc_client.send_message = AsyncMock(return_value={"state": "completed"})
+    oc_client.session_status = AsyncMock(
+        return_value={"id": "sess-1", "state": "completed"}
+    )
+    oc_client.abort = AsyncMock(return_value=True)
     oc_client.close = AsyncMock()
 
     with (
         patch("bp_agents.platform.dispatch.OpenCodeClient", return_value=oc_client),
         patch(
             "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
+        ),
+        patch(
+            "bp_agents.platform.dispatch._wait_for_session_completion",
+            AsyncMock(return_value={"state": "completed"}),
         ),
     ):
         await dispatch(
@@ -219,6 +235,10 @@ async def test_send_message_called_with_correct_model_and_tools(
     oc_client.auth_set = AsyncMock(return_value=True)
     oc_client.create_session = AsyncMock(return_value=MagicMock(session_id="sess-1"))
     oc_client.send_message = AsyncMock(return_value={"state": "completed"})
+    oc_client.session_status = AsyncMock(
+        return_value={"id": "sess-1", "state": "completed"}
+    )
+    oc_client.abort = AsyncMock(return_value=True)
     oc_client.close = AsyncMock()
 
     config = _agent_config()
@@ -227,6 +247,10 @@ async def test_send_message_called_with_correct_model_and_tools(
         patch("bp_agents.platform.dispatch.OpenCodeClient", return_value=oc_client),
         patch(
             "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
+        ),
+        patch(
+            "bp_agents.platform.dispatch._wait_for_session_completion",
+            AsyncMock(return_value={"state": "completed"}),
         ),
     ):
         await dispatch(
@@ -267,6 +291,10 @@ async def test_dispatch_strips_credentials_from_sandbox_env(
     oc_client.auth_set = AsyncMock(return_value=True)
     oc_client.create_session = AsyncMock(return_value=MagicMock(session_id="sess-1"))
     oc_client.send_message = AsyncMock(return_value={"state": "completed"})
+    oc_client.session_status = AsyncMock(
+        return_value={"id": "sess-1", "state": "completed"}
+    )
+    oc_client.abort = AsyncMock(return_value=True)
     oc_client.close = AsyncMock()
 
     cfg = _sandbox_config()
@@ -280,6 +308,10 @@ async def test_dispatch_strips_credentials_from_sandbox_env(
         patch("bp_agents.platform.dispatch.OpenCodeClient", return_value=oc_client),
         patch(
             "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
+        ),
+        patch(
+            "bp_agents.platform.dispatch._wait_for_session_completion",
+            AsyncMock(return_value={"state": "completed"}),
         ),
     ):
         await dispatch(

@@ -146,7 +146,7 @@ def test_policy_permits_pypi_and_llm(
 
 
 def test_sandbox_lifecycle_with_policy() -> None:
-    """Pipeline-level: create, is_running, list_containers, destroy with an
+    """Pipeline-level: create, is_running, destroy with an
     injected docker client, exercising the same path the orchestrator uses."""
     client = MagicMock()
     client.api.create_host_config.return_value = {}
@@ -173,10 +173,6 @@ def test_sandbox_lifecycle_with_policy() -> None:
 
     client.containers.get.return_value = _container_with_status("running")
     assert _run(sandbox.is_running(session.container_id)) is True
-
-    client.containers.list.return_value = [container]
-    listed = _run(sandbox.list_containers({"image": "symphony-agent:latest"}))
-    assert listed == ["sandbox-abc"]
 
     client.containers.get.return_value = container
     _run(sandbox.destroy(session.container_id))
