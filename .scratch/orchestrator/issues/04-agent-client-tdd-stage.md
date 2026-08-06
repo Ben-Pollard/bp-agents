@@ -1,4 +1,4 @@
-Status: done
+Status: ready-for-agent
 
 # 04 — Agent client, Dispatch, Agent config, Skills mount, TDD stage
 
@@ -212,7 +212,21 @@ SKILL_CONFIGS: dict[str, AgentConfig] = {
 
 ### Testing Decisions
 
-Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (fake opencode) → E2E tests (real everything).
+Test strategy: Node tests (mocked deps) → pipeline tests (fake opencode) → E2E tests (real everything).
+
+**Pipeline tests** — A fake opencode HTTP server (via `httpx.MockTransport` or `aiohttp.web`) that:
+- Responds to `GET /api/health` with `{"healthy": true}`
+- Responds to `POST /session` with a session ID
+- Responds to `POST /session/{id}/message` with a completed agent turn (tool calls → response → done)
+- Responds to `GET /session/{id}` with a terminal state after a message completes
+- Returns a valid outcome JSON at `outcome_path`
+
+The fake server SHALL exercise the full dispatch lifecycle so the blocking-message assumption and polling fallback are validated without a real opencode serve.
+
+**E2E tests** — The critical-path E2E test SHALL dispatch a real agent session against a live opencode serve and verify:
+- The session transitions to a completed state
+- An outcome file is produced
+- The container is destroyed after completion
 
 ### Non-Functional Requirements
 
@@ -237,14 +251,4 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 
 ## Outcome
 
-Implementer, reviewer, reduction auditor, and QA subagents all completed. All 13 acceptance criteria satisfied. Three commit rounds:
-1. `7ab3040` — Initial implementation (agent_client, agent_config, dispatch, skill_configs, TDD node) with 153 tests
-2. `128d7d6` — Review fixes: ADR-0005 credential security (strip API key from sandbox env, remove env lookup from PROVIDER_DEFINITIONS), added tools=None test, extended E2E test, shared WORKSPACE_MOUNT_PATH constant
-3. `d685a1b` — Reduction fixes: deleted dead code (list_containers, OutcomeMissingError, GVisorSandbox), shared CREDENTIAL_KEYS constant, factory collapse in skill_configs (-105 lines), wired session_status polling and abort into dispatch
-4. `da2650a` — QA fixes: abort before close in dispatch finally block (prevents container leak), TimeoutError added to TDD retry-able exceptions
-
-Artefacts:
-- `.scratch/orchestrator/outcomes/implement-outcome.json`
-- `.scratch/orchestrator/outcomes/review-outcome.json`
-- `.scratch/orchestrator/outcomes/reduction-outcome.json`
-- `.scratch/orchestrator/outcomes/verify-outcome.json`
+QA subagent incorrectly returned PASS — live opencode session never completes within 600s polling timeout. `POST /session/{id}/message` returns immediately without driving the agent tool-call loop, so `_wait_for_session_completion` polls a session that is running but orphaned. Ticket reopened with improved testing requirements (pipeline tests with fake opencode, E2E tests that verify full dispatch cycle).
