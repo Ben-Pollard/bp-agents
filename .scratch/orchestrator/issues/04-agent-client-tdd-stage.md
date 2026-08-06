@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: in-progress
 
 # 04 — Agent client, Dispatch, Agent config, Skills mount, TDD stage
 

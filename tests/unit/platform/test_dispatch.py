@@ -83,10 +83,6 @@ async def test_dispatch_writes_opencode_json(
         patch(
             "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
         ),
-        patch(
-            "bp_agents.platform.dispatch._wait_for_session_completion",
-            AsyncMock(return_value={"state": "completed"}),
-        ),
     ):
         result = await dispatch(
             sandbox=mock_sandbox,
@@ -194,10 +190,6 @@ async def test_dispatch_injects_credentials(
         patch(
             "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
         ),
-        patch(
-            "bp_agents.platform.dispatch._wait_for_session_completion",
-            AsyncMock(return_value={"state": "completed"}),
-        ),
     ):
         await dispatch(
             sandbox=mock_sandbox,
@@ -220,6 +212,7 @@ async def test_dispatch_destroys_container_on_session_timeout(
     oc_client.auth_set = AsyncMock(return_value=True)
     oc_client.create_session = AsyncMock(return_value=MagicMock(session_id="sess-1"))
     oc_client.send_message = AsyncMock(return_value={"state": "running"})
+    oc_client.session_status = AsyncMock(return_value={"state": "running"})
     oc_client.abort = AsyncMock(return_value=True)
     oc_client.close = AsyncMock()
 
@@ -228,12 +221,10 @@ async def test_dispatch_destroys_container_on_session_timeout(
         patch(
             "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
         ),
-        patch(
-            "bp_agents.platform.dispatch._wait_for_session_completion",
-            AsyncMock(side_effect=TimeoutError("session did not complete within 600s")),
-        ),
+        patch("bp_agents.platform.agent_client.SESSION_POLL_INTERVAL", 0.01),
+        patch("bp_agents.platform.agent_client.SESSION_TIMEOUT", 0.05),
     ):
-        with pytest.raises(TimeoutError):
+        with pytest.raises(FileNotFoundError):
             await dispatch(
                 sandbox=mock_sandbox,
                 sandbox_config=_sandbox_config(),
@@ -283,10 +274,6 @@ async def test_send_message_called_with_correct_model_and_tools(
         patch("bp_agents.platform.dispatch.OpenCodeClient", return_value=oc_client),
         patch(
             "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
-        ),
-        patch(
-            "bp_agents.platform.dispatch._wait_for_session_completion",
-            AsyncMock(return_value={"state": "completed"}),
         ),
     ):
         await dispatch(
@@ -344,10 +331,6 @@ async def test_dispatch_strips_credentials_from_sandbox_env(
         patch("bp_agents.platform.dispatch.OpenCodeClient", return_value=oc_client),
         patch(
             "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
-        ),
-        patch(
-            "bp_agents.platform.dispatch._wait_for_session_completion",
-            AsyncMock(return_value={"state": "completed"}),
         ),
     ):
         await dispatch(

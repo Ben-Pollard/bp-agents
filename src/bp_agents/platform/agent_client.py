@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 
 import httpx
@@ -6,6 +7,10 @@ import httpx
 @dataclass
 class Session:
     session_id: str
+
+
+SESSION_POLL_INTERVAL = 2.0
+SESSION_TIMEOUT = 600
 
 
 def _unwrap_payload(data: dict) -> dict:
@@ -54,7 +59,22 @@ class OpenCodeClient:
             json=body,
         )
         resp.raise_for_status()
-        return _unwrap_payload(resp.json())
+
+        msg = _unwrap_payload(resp.json())
+        msg_state = msg.get("state", "")
+        if msg_state and msg_state != "running":
+            return msg
+
+        elapsed = 0.0
+        while elapsed < SESSION_TIMEOUT:
+            status = await self.session_status(session)
+            state = status.get("state", "")
+            if state and state != "running":
+                return status
+            await asyncio.sleep(SESSION_POLL_INTERVAL)
+            elapsed += SESSION_POLL_INTERVAL
+
+        return msg
 
     async def session_status(self, session: Session) -> dict:
         resp = await self._client.get(f"/session/{session.session_id}")

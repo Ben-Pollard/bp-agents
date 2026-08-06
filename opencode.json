@@ -38,7 +38,8 @@
     },
     "external_directory": {
       "*": "deny",
-      "/tmp/opencode/**": "allow"
+      "/tmp/opencode/**": "allow",
+      "/home/user/projects/bp-skills/*": "allow"
     },
     "webfetch": "allow",
     "websearch": "allow",

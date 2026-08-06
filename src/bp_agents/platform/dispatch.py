@@ -38,8 +38,6 @@ MCP_DEFS: dict = {}
 OUTCOME_FILENAME = "outcome.json"
 HEALTH_CHECK_RETRIES = 30
 HEALTH_CHECK_INTERVAL = 1.0
-SESSION_POLL_INTERVAL = 2.0
-SESSION_TIMEOUT = 600
 
 
 async def _wait_for_health(
@@ -57,24 +55,6 @@ async def _wait_for_health(
                 pass
             await asyncio.sleep(HEALTH_CHECK_INTERVAL)
     return False
-
-
-async def _wait_for_session_completion(
-    client: OpenCodeClient,
-    session,
-    timeout: float = SESSION_TIMEOUT,
-) -> dict:
-    elapsed = 0.0
-    while elapsed < timeout:
-        status = await client.session_status(session)
-        state = status.get("state", "running")
-        if state != "running":
-            return status
-        await asyncio.sleep(SESSION_POLL_INTERVAL)
-        elapsed += SESSION_POLL_INTERVAL
-    raise TimeoutError(
-        f"session {session.session_id} did not complete within {timeout}s"
-    )
 
 
 async def dispatch(
@@ -95,7 +75,7 @@ async def dispatch(
     3. Wait for GET /api/health → {"healthy": true}
     4. PUT /auth/{provider} inject creds
     5. POST /session create session
-    6. POST /session/{id}/message send prompt (blocks until agent done)
+    6. POST /session/{id}/message send prompt (blocks until agent done via polling)
     7. Read outcome_path from workspace, validate against stage contract
     8. Destroy container
     Returns validated outcome dict. Raises on failure — container always destroyed.
@@ -153,8 +133,6 @@ async def dispatch(
             (provider_id, model_id),
             config.tools,
         )
-
-        await _wait_for_session_completion(client, oc_session)
 
         outcome_host_path = os.path.join(workspace, OUTCOME_FILENAME)
         if not os.path.exists(outcome_host_path):

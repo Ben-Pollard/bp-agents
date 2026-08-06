@@ -1,7 +1,5 @@
 """E2E tests for OpenCodeClient against a real opencode serve process."""
 
-import asyncio
-import json
 import subprocess
 import time
 
@@ -78,21 +76,22 @@ async def test_open_code_client_http_contract_against_real_server() -> None:
         auth_ok = await client.auth_set("openrouter", "test-key")
         assert auth_ok is True, "auth_set must return True"
 
-        send_task = asyncio.create_task(
-            client.send_message(
-                session,
-                [{"type": "text", "text": "list files"}],
-                ("openrouter", "deepseek/deepseek-v4-flash"),
-            )
+        result = await client.send_message(
+            session,
+            [{"type": "text", "text": "list files"}],
+            ("openrouter", "deepseek/deepseek-v4-flash"),
         )
-        await asyncio.sleep(1)
+
+        assert isinstance(result, dict), "send_message must return a dict"
+        assert (
+            "info" in result or "parts" in result
+        ), "send_message must return message with info/parts"
+
+        status = await client.session_status(session)
+        assert isinstance(status, dict), "session_status must return a dict"
+
         abort_ok = await client.abort(session)
         assert abort_ok is True, "abort must return True"
-
-        try:
-            await asyncio.wait_for(send_task, timeout=3)
-        except (asyncio.TimeoutError, httpx.HTTPStatusError, json.JSONDecodeError):
-            pass
 
         await client.close()
     finally:
