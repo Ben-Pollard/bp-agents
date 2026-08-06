@@ -1,14 +1,11 @@
-import json
 import logging
 import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
 import pytest
 
-from bp_agents.platform.agent_client import OpenCodeClient
 from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
 from bp_agents.workflows.sdd.state import TicketPipelineState
@@ -32,22 +29,6 @@ def _ts(
         "verification_passed": None,
         "blocked_reason": blocked_reason,
     }
-
-
-def _make_fake_opencode_transport():
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/session" and request.method == "POST":
-            return httpx.Response(200, json={"id": "sess-1"})
-        if (
-            request.url.path == "/api/session/sess-1/prompt"
-            and request.method == "POST"
-        ):
-            return httpx.Response(200, json={"id": "prompt-1"})
-        if request.url.path == "/api/session/sess-1/wait" and request.method == "POST":
-            return httpx.Response(200, json={"id": "sess-1", "state": "completed"})
-        return httpx.Response(404)
-
-    return httpx.MockTransport(handler)
 
 
 @pytest.fixture
@@ -94,19 +75,12 @@ def mock_sandbox() -> MagicMock:
     return sandbox
 
 
-@pytest.fixture
-def open_code_client() -> OpenCodeClient:
-    transport = _make_fake_opencode_transport()
-    httpx_client = httpx.AsyncClient(base_url="http://test", transport=transport)
-    return OpenCodeClient("http://test", client=httpx_client)
-
-
 @pytest.mark.asyncio
 async def test_tdd_pipeline_wired_dispatch_logs_contracts(
     target_repo: Path,
     skills_dir: Path,
     mock_sandbox: MagicMock,
-    open_code_client: OpenCodeClient,
+    monkeypatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     (target_repo / "hello.py").write_text("def hello():\n    return 'hello world'\n")
@@ -116,7 +90,12 @@ async def test_tdd_pipeline_wired_dispatch_logs_contracts(
         "test_results": {"passed": 3, "failed": 0, "skipped": 0},
         "concerns": [],
     }
-    (target_repo / "outcome.json").write_text(json.dumps(outcome))
+
+    fake_dispatch = AsyncMock(return_value=outcome)
+
+    import bp_agents.workflows.sdd.tdd as tdd_module
+
+    monkeypatch.setattr(tdd_module, "dispatch", fake_dispatch)
 
     app = build_ticket_pipeline(
         sandbox=mock_sandbox,
@@ -128,7 +107,6 @@ async def test_tdd_pipeline_wired_dispatch_logs_contracts(
         ),
         target_repo_path=str(target_repo),
         skills_path=str(skills_dir),
-        open_code_client=open_code_client,
     )
 
     caplog.set_level(logging.INFO)
@@ -194,7 +172,7 @@ async def test_tdd_pipeline_wired_blocked_logs_reason(
     target_repo: Path,
     skills_dir: Path,
     mock_sandbox: MagicMock,
-    open_code_client: OpenCodeClient,
+    monkeypatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     outcome = {
@@ -203,7 +181,12 @@ async def test_tdd_pipeline_wired_blocked_logs_reason(
         "test_results": {"passed": 0, "failed": 0, "skipped": 0},
         "concerns": ["Module utils.validators not yet implemented"],
     }
-    (target_repo / "outcome.json").write_text(json.dumps(outcome))
+
+    fake_dispatch = AsyncMock(return_value=outcome)
+
+    import bp_agents.workflows.sdd.tdd as tdd_module
+
+    monkeypatch.setattr(tdd_module, "dispatch", fake_dispatch)
 
     app = build_ticket_pipeline(
         sandbox=mock_sandbox,
@@ -215,7 +198,6 @@ async def test_tdd_pipeline_wired_blocked_logs_reason(
         ),
         target_repo_path=str(target_repo),
         skills_path=str(skills_dir),
-        open_code_client=open_code_client,
     )
 
     caplog.set_level(logging.INFO)

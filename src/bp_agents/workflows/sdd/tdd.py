@@ -1,9 +1,7 @@
 import asyncio
-import dataclasses
 import json
 import logging
 import os
-import shutil
 import subprocess
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -11,8 +9,10 @@ from typing import TYPE_CHECKING
 import httpx
 
 from bp_agents.platform.agent_client import OpenCodeClient
+from bp_agents.platform.dispatch import OUTCOME_FILENAME, dispatch
 from bp_agents.platform.sandbox import Sandbox, SandboxConfig
 from bp_agents.workflows.sdd.contracts import TddOutput
+from bp_agents.workflows.sdd.skill_configs import SKILL_CONFIGS
 from bp_agents.workflows.sdd.state import TicketPipelineState
 
 if TYPE_CHECKING:
@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 _TDD_SKILL = "tdd"
 
-# Path segments that trigger the NFR guard to prevent targeting bp-agents itself.
 _BP_AGENTS_SEGMENTS = {"bp-agents", ".agents"}
 
 
@@ -84,7 +83,7 @@ class TddNode:
         project = state.get("project", "unknown")
         ticket_body = state.get("ticket_body", "")
 
-        self._prepare_workspace()
+        self._check_target_not_bp_agents()
         branch_name = self._ensure_feature_branch(ticket_id)
 
         input_contract = build_input_contract(ticket_id, ticket_body)
@@ -100,118 +99,106 @@ class TddNode:
             )
             await self._tracker.update_state(ticket_id, "implementing", project)
 
-        outcome_host_path = os.path.join(self._target_repo_path, "outcome.json")
-        config = dataclasses.replace(
-            self._sandbox_config,
-            workspace_path=self._target_repo_path,
-            workspace_mode="rw",
-            env={
-                **self._sandbox_config.env,
-                "outcome_path": "/data/workspace/outcome.json",
-            },
-        )
+        agent_config = SKILL_CONFIGS[_TDD_SKILL]
+        outcome_host_path = os.path.join(self._target_repo_path, OUTCOME_FILENAME)
+        sandbox_outcome_path = "/data/workspace/" + OUTCOME_FILENAME
 
-        session = await self._sandbox.create(config)
-        try:
-            if self._client is not None:
-                client = self._client
-            else:
-                client = OpenCodeClient(session.base_url)
+        api_key = self._sandbox_config.env.get("OPENROUTER_API_KEY", "")
+
+        for attempt in range(1, self._max_retries + 1):
             try:
-                for attempt in range(1, self._max_retries + 1):
-                    try:
-                        oc_session = await client.create_session(agent="builder")
-                        await client.prompt(oc_session, json.dumps(input_contract))
-                        await client.wait(oc_session)
-                    except (
-                        httpx.ConnectError,
-                        httpx.RemoteProtocolError,
-                        httpx.HTTPStatusError,
-                    ) as exc:
-                        if attempt < self._max_retries:
-                            logger.warning(
-                                "ticket %s: sandbox not ready, retrying (%d/%d): %s",
-                                ticket_id,
-                                attempt,
-                                self._max_retries,
-                                exc,
-                            )
-                            await asyncio.sleep(3)
-                            continue
-                        logger.error(
-                            "ticket %s: blocked, reason: sandbox unreachable: %s",
-                            ticket_id,
-                            exc,
-                        )
-                        return {
-                            "blocked_reason": f"sandbox unreachable: {exc}",
-                        }
-
-                    try:
-                        tdd_output = self._read_and_validate_outcome(
-                            ticket_id, outcome_host_path
-                        )
-                    except OutcomeMissingError:
-                        return {
-                            "blocked_reason": "agent: no outcome file written by agent",
-                        }
-
-                    logger.info(
-                        "ticket %s: tdd output  contract=%s",
+                outcome = await dispatch(
+                    sandbox=self._sandbox,
+                    sandbox_config=self._sandbox_config,
+                    config=agent_config,
+                    skill=_TDD_SKILL,
+                    prompt=json.dumps(input_contract),
+                    workspace=self._target_repo_path,
+                    outcome_path=sandbox_outcome_path,
+                    api_key=api_key,
+                    opencode_client=self._client,
+                )
+            except (
+                httpx.ConnectError,
+                httpx.RemoteProtocolError,
+                httpx.HTTPStatusError,
+            ) as exc:
+                if attempt < self._max_retries:
+                    logger.warning(
+                        "ticket %s: sandbox not ready, retrying (%d/%d): %s",
                         ticket_id,
-                        json.dumps(tdd_output),
+                        attempt,
+                        self._max_retries,
+                        exc,
                     )
+                    await asyncio.sleep(3)
+                    continue
+                logger.error(
+                    "ticket %s: blocked, reason: sandbox unreachable: %s",
+                    ticket_id,
+                    exc,
+                )
+                return {
+                    "blocked_reason": f"sandbox unreachable: {exc}",
+                }
+            except FileNotFoundError:
+                return {
+                    "blocked_reason": "agent: no outcome file written by agent",
+                }
 
-                    if self._tracker is not None:
-                        await self._tracker.add_comment(
-                            ticket_id, json.dumps(tdd_output), project
-                        )
+            try:
+                tdd_output = validate_tdd_output(outcome)
+            except ValueError as e:
+                logger.error("ticket %s: invalid outcome: %s", ticket_id, e)
+                return {
+                    "blocked_reason": f"agent: invalid outcome: {e}",
+                }
 
-                    if tdd_output["status"] == "FAIL":
-                        if attempt < self._max_retries:
-                            logger.info(
-                                "ticket %s: transient fail, retrying (%d/%d)",
-                                ticket_id,
-                                attempt,
-                                self._max_retries,
-                            )
-                            continue
-                        logger.info(
-                            "ticket %s: transient fail, exhausted %d retries",
-                            ticket_id,
-                            self._max_retries,
-                        )
-                        return await self._handle_non_complete(
-                            state,
-                            tdd_output,
-                            "fail",
-                            "auto: transient failure: ",
-                            "auto: transient failure",
-                        )
+            logger.info(
+                "ticket %s: tdd output  contract=%s",
+                ticket_id,
+                json.dumps(tdd_output),
+            )
 
-                    if tdd_output["status"] == "BLOCKED":
-                        return await self._handle_non_complete(
-                            state,
-                            tdd_output,
-                            "blocked",
-                            "agent: ",
-                            "agent: blocked",
-                        )
+            if self._tracker is not None:
+                await self._tracker.add_comment(
+                    ticket_id, json.dumps(tdd_output), project
+                )
 
-                    return await self._handle_complete(state, tdd_output, branch_name)
-            finally:
-                if self._client is None:
-                    await client.close()
-        finally:
-            await self._sandbox.destroy(session.container_id)
+            if tdd_output["status"] == "FAIL":
+                if attempt < self._max_retries:
+                    logger.info(
+                        "ticket %s: transient fail, retrying (%d/%d)",
+                        ticket_id,
+                        attempt,
+                        self._max_retries,
+                    )
+                    continue
+                logger.info(
+                    "ticket %s: transient fail, exhausted %d retries",
+                    ticket_id,
+                    self._max_retries,
+                )
+                return await self._handle_non_complete(
+                    state,
+                    tdd_output,
+                    "fail",
+                    "auto: transient failure: ",
+                    "auto: transient failure",
+                )
 
-    def _prepare_workspace(self) -> None:
-        self._check_target_not_bp_agents()
-        skills_dest = os.path.join(self._target_repo_path, ".agents", "skills")
-        os.makedirs(skills_dest, exist_ok=True)
-        if os.path.isdir(self._skills_path):
-            shutil.rmtree(skills_dest, ignore_errors=True)
-            shutil.copytree(self._skills_path, skills_dest)
+            if tdd_output["status"] == "BLOCKED":
+                return await self._handle_non_complete(
+                    state,
+                    tdd_output,
+                    "blocked",
+                    "agent: ",
+                    "agent: blocked",
+                )
+
+            return await self._handle_complete(state, tdd_output, branch_name)
+
+        return {"blocked_reason": "auto: max retries exhausted"}
 
     def _check_target_not_bp_agents(self) -> None:
         parts = os.path.normpath(self._target_repo_path).split(os.sep)
@@ -262,21 +249,6 @@ class TddNode:
                     )
         return branch_name
 
-    def _read_and_validate_outcome(
-        self, ticket_id: str, outcome_host_path: str
-    ) -> TddOutput:
-        try:
-            with open(outcome_host_path) as f:
-                output_data = json.load(f)
-        except FileNotFoundError:
-            logger.error(
-                "ticket %s: no outcome file found at %s",
-                ticket_id,
-                outcome_host_path,
-            )
-            raise OutcomeMissingError(ticket_id)
-        return validate_tdd_output(output_data)
-
     async def _handle_non_complete(
         self,
         state: TicketPipelineState,
@@ -323,12 +295,12 @@ class TddNode:
         return {"status": "awaiting_review", "tdd_output": tdd_output}
 
     def _clean_artifacts(self) -> None:
-        outcome = os.path.join(self._target_repo_path, "outcome.json")
+        outcome = os.path.join(self._target_repo_path, OUTCOME_FILENAME)
         if os.path.exists(outcome):
             os.remove(outcome)
-        skills = os.path.join(self._target_repo_path, ".agents")
-        if os.path.isdir(skills):
-            shutil.rmtree(skills, ignore_errors=True)
+        opencode_json = os.path.join(self._target_repo_path, "opencode.json")
+        if os.path.exists(opencode_json):
+            os.remove(opencode_json)
 
 
 class OutcomeMissingError(Exception):

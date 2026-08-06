@@ -1,5 +1,3 @@
-import json
-from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 import httpx
@@ -8,13 +6,6 @@ import httpx
 @dataclass
 class Session:
     session_id: str
-    base_url: str
-
-
-@dataclass
-class PromptResult:
-    prompt_id: str
-    admitted: bool
 
 
 def _unwrap_payload(data: dict) -> dict:
@@ -22,6 +13,8 @@ def _unwrap_payload(data: dict) -> dict:
 
 
 class OpenCodeClient:
+    """httpx wrapper for opencode serve HTTP API."""
+
     def __init__(self, base_url: str, client: httpx.AsyncClient | None = None) -> None:
         self.base_url = base_url.rstrip("/")
         if client is not None:
@@ -29,46 +22,49 @@ class OpenCodeClient:
         else:
             self._client = httpx.AsyncClient(base_url=self.base_url)
 
-    async def create_session(self, agent: str = "") -> Session:
-        payload: dict = {}
-        if agent:
-            payload["agent"] = agent
-        resp = await self._client.post("/api/session", json=payload)
+    async def auth_set(self, provider_id: str, api_key: str) -> bool:
+        resp = await self._client.put(
+            f"/auth/{provider_id}",
+            json={"type": "api", "key": api_key},
+        )
+        resp.raise_for_status()
+        return resp.status_code == 200
+
+    async def create_session(self) -> Session:
+        resp = await self._client.post("/session")
         resp.raise_for_status()
         data = _unwrap_payload(resp.json())
-        return Session(session_id=data["id"], base_url=self.base_url)
+        return Session(session_id=data["id"])
 
-    async def prompt(self, session: Session, text: str) -> PromptResult:
+    async def send_message(
+        self,
+        session: Session,
+        parts: list[dict],
+        model: tuple[str, str],
+        tools: dict[str, bool] | None = None,
+    ) -> dict:
+        body: dict = {
+            "model": {"providerID": model[0], "modelID": model[1]},
+            "parts": parts,
+        }
+        if tools is not None:
+            body["tools"] = tools
         resp = await self._client.post(
-            f"/api/session/{session.session_id}/prompt",
-            json={"prompt": {"text": text}},
+            f"/session/{session.session_id}/message",
+            json=body,
         )
         resp.raise_for_status()
-        data = _unwrap_payload(resp.json())
-        return PromptResult(
-            prompt_id=data.get("id", ""),
-            admitted=True,
-        )
-
-    async def stream_events(self, session: Session) -> AsyncIterator[dict]:
-        async with self._client.stream(
-            "GET", f"/api/session/{session.session_id}/event"
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                line = line.strip()
-                if line.startswith("data: "):
-                    yield json.loads(line[6:])
+        return _unwrap_payload(resp.json())
 
     async def session_status(self, session: Session) -> dict:
-        resp = await self._client.get(f"/api/session/{session.session_id}")
+        resp = await self._client.get(f"/session/{session.session_id}")
         resp.raise_for_status()
         return _unwrap_payload(resp.json())
 
-    async def wait(self, session: Session) -> dict:
-        resp = await self._client.post(f"/api/session/{session.session_id}/wait")
+    async def abort(self, session: Session) -> bool:
+        resp = await self._client.post(f"/session/{session.session_id}/abort")
         resp.raise_for_status()
-        return _unwrap_payload(resp.json())
+        return resp.status_code == 200
 
     async def close(self) -> None:
         await self._client.aclose()
