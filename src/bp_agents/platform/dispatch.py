@@ -164,8 +164,11 @@ async def dispatch(
 
         return outcome
     finally:
+        if oc_session is not None:
+            try:
+                await client.abort(oc_session)
+            except Exception:
+                logger.exception("abort failed during cleanup")
         if own_client:
             await client.close()
-        if oc_session is not None:
-            await client.abort(oc_session)
         await sandbox.destroy(sandbox_session.container_id)

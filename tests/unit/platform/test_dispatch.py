@@ -213,6 +213,42 @@ async def test_dispatch_injects_credentials(
     oc_client.auth_set.assert_called_once_with("openrouter", "sk-test-key")
 
 
+async def test_dispatch_destroys_container_on_session_timeout(
+    mock_sandbox: MagicMock, workspace: str
+) -> None:
+    oc_client = MagicMock()
+    oc_client.auth_set = AsyncMock(return_value=True)
+    oc_client.create_session = AsyncMock(return_value=MagicMock(session_id="sess-1"))
+    oc_client.send_message = AsyncMock(return_value={"state": "running"})
+    oc_client.abort = AsyncMock(return_value=True)
+    oc_client.close = AsyncMock()
+
+    with (
+        patch("bp_agents.platform.dispatch.OpenCodeClient", return_value=oc_client),
+        patch(
+            "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
+        ),
+        patch(
+            "bp_agents.platform.dispatch._wait_for_session_completion",
+            AsyncMock(side_effect=TimeoutError("session did not complete within 600s")),
+        ),
+    ):
+        with pytest.raises(TimeoutError):
+            await dispatch(
+                sandbox=mock_sandbox,
+                sandbox_config=_sandbox_config(),
+                config=_agent_config(),
+                skill="tdd",
+                prompt="Do the thing",
+                workspace=workspace,
+                outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
+                api_key="sk-test-key",
+            )
+
+    mock_sandbox.destroy.assert_called_once()
+    oc_client.abort.assert_called_once()
+
+
 async def test_dispatch_provider_definitions_are_exported() -> None:
     assert "openrouter" in PROVIDER_DEFINITIONS
     assert "api" in PROVIDER_DEFINITIONS["openrouter"]
