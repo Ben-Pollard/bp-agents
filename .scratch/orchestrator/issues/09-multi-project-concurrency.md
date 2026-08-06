@@ -13,11 +13,11 @@ Status: ready-for-agent
 
 Three scaling/operational behaviors:
 
-1. **Multi-project config** — Orchestrator reads `BP_PROJECTS` env var, manages multiple project pipelines from a single process. Each project has its own tracker, repo, and workspace. Tickets show project prefix in logs and front-end. Cross-project ticket creation visible on next poll.
+1. **Multi-project config** — Orchestrator reads `BP_PROJECTS` env var, manages multiple project pipelines from a single process. Each project has its own tracker, repo, and workspace. Tickets show `project=<name>` prefix in logs and front-end. Cross-project ticket creation visible on next poll.
 
 2. **Concurrency** — Configurable global limit (`BP_CONCURRENCY`) on concurrent agent sessions. Slot-based dispatch: when at limit, new ready tickets wait. Logs show `waiting for slot (<active>/<limit>)`.
 
-3. **Stage timeouts** — Each stage has configurable timeout. On timeout, orchestrator kills agent session, logs timeout event, counts as failure for retry purposes.
+3. **Stage timeouts** — Each stage has configurable timeout. On timeout, orchestrator kills agent session, logs timeout event, counts as failure for retry purposes (retry/block behavior in #07).
 
 ## Requirements
 
@@ -73,7 +73,8 @@ The orchestrator manages multiple projects concurrently from a single process. E
 ### Acceptance Criteria
 
 - [AC-25] WHILE the sandbox orchestration layer reports active sessions equal to the configured global limit, no new session SHALL be reported and stdout SHALL log `ticket <id>: waiting for slot (<active>/<limit> active)`.
-- [AC-26] WHEN a stage exceeds its configured timeout, stdout SHALL log `ticket <id>: stage <stage> timed out`, the sandbox orchestration layer SHALL report the session as stopped, and the timeout SHALL count as a failure for retry purposes.
+- [AC-36] Stdout SHALL log each poll tick with the count of ready tickets found.
+- [AC-37] Stdout SHALL log ticket dispatches with the project name (`project=<name> ticket=<id>`), and the front end SHALL group tickets by project.
 - [AC-38] WHEN an agent in project A creates a ticket in project B (via normal tracker operations), that ticket SHALL appear in project B's ready queue on the next poll tick, visible in the front end.
 
 ### Architectural Constraints
@@ -83,6 +84,7 @@ The orchestrator manages multiple projects concurrently from a single process. E
 - **ADR-0001**: LangGraph — RetryPolicy for retries, timeout via LangGraph timeout policies.
 - The orchestrator manages multiple projects concurrently from a single process. Each project has its own configuration.
 - Environment variable configuration via `.env` + `python-dotenv`: `BP_CONCURRENCY`, `BP_PROJECTS`, per-project `BP_PROJECT_<NAME>_REPO` and `BP_PROJECT_<NAME>_REDMINE_PROJECT_ID`.
+- All services managed via Docker Compose: orchestrator, Redmine, Langfuse, egress proxy.
 
 ### Testing Decisions
 
@@ -96,12 +98,12 @@ None specific beyond what's captured in ACs.
 
 - [ ] Concurrency limit enforced: no more than `BP_CONCURRENCY` concurrent agent sessions across all projects
 - [ ] Ticket waiting for slot logs `waiting for slot (<active>/<limit>)` and dispatches when slot frees
-- [ ] Stage timeout kills agent session and counts as failure for retry purposes
-- [ ] Timeout event logged with ticket ID, stage name, and duration
-- [ ] Multiple projects configured via `BP_PROJECTS` env var with per-project prefixes
+- [ ] Multiple projects configured via `BP_PROJECTS` env var with per-project prefixes (`BP_PROJECT_<NAME>_REPO`, `BP_PROJECT_<NAME>_REDMINE_PROJECT_ID`)
 - [ ] Tickets logged with `project=<name>` prefix in all log lines
+- [ ] Front-end groups tickets by project
 - [ ] Cross-project ticket creation: agent-created ticket in project B discovered on project B's next poll
 - [ ] Poll interval configurable — default matches a reasonable single-developer expectation
+- [ ] Stdout logs poll tick with count of ready tickets found
 
 ## Blocked by
 

@@ -12,7 +12,7 @@ The system replaces ad-hoc agent invocation with structured contracts: each skil
 
 The orchestrator is a long-lived process that discovers tickets (created externally by the developer), drives each through a pipeline of skill stages (TDD → code review → revision → verification), and presents results for human approval before merging to main. The developer interacts primarily as an observer-curator: watching progress, approving/rejecting at gates, unblocking stalled tickets, and requesting realignment when requirements change.
 
-The orchestrator persists enough state to recover from crashes without re-running completed stages or incurring duplicate API cost. Agents run in sandboxes with a defined egress policy — LLM APIs, package registries, and configured MCP endpoints are reachable; arbitrary internet and git remotes are not. Long-lived git credentials never enter the sandbox. LLM API keys are present but unreadable by the agent (delegated via OpenCode tool calls).
+The orchestrator persists enough state to recover from crashes without re-running completed stages or incurring duplicate API cost. Agents run in sandboxes with a defined egress policy — LLM APIs, package registries, and configured MCP endpoints are reachable; arbitrary internet and git remotes are not. Long-lived git credentials never enter the sandbox. LLM API keys are injected into opencode's process memory via HTTP API — never present in environment variables, files, or any agent-accessible location inside the sandbox.
 
 ## User Stories
 
@@ -105,7 +105,7 @@ Agent sandboxes have controlled network access:
 - **Allowed:** LLM API endpoints (OpenRouter, Anthropic, OpenAI, etc.), package registries (PyPI, npm), configured MCP endpoints (e.g., Context7).
 - **Blocked:** Arbitrary internet, git remotes, and any destination not in the allowlist.
 
-Blocked connection attempts are logged as observable events (destination, timestamp). The agent experiences a connection failure. Git credentials are never present in the sandbox; all git operations go through the orchestrator. LLM API keys are present in the sandbox but the agent cannot read them (delegated via OpenCode tool calls).
+Blocked connection attempts are logged as observable events (destination, timestamp). The agent experiences a connection failure. Git credentials are never present in the sandbox; all git operations go through the orchestrator. LLM API keys are injected into opencode's process memory via HTTP API — never present in environment variables, files, or any agent-accessible location inside the sandbox.
 
 ### Crash Recovery
 
@@ -380,3 +380,5 @@ The orchestrator manages multiple projects concurrently from a single process. E
 **Critical.** Defines the fundamental contract between orchestrator and agents, the ticket lifecycle, human interaction model, crash recovery, and observability. All other requirements depend on this.
 
 ## Changelog
+
+- **2026-08-06**: Updated credential model — LLM API keys are injected into opencode's process memory via HTTP API, never present in environment variables, files, or any agent-accessible location inside the sandbox. Replaces previous "present but unreadable" language per ADR-0005.

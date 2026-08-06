@@ -1,25 +1,28 @@
-Status: ready-for-human
+Status: in-progress
 
-# 04 — Agent client + TDD stage (first real dispatch)
+# 04 — Agent client, Dispatch, Agent config, Skills mount, TDD stage
 
 ## Source Documents
 
 - Requirements: `docs/requirements/orchestrator-agent-contract.md`
 - Architecture: `docs/architecture/gap-analysis.md`
-- ADRs: ADR-0001, ADR-0002
+- ADRs: ADR-0001, ADR-0002, ADR-0005
 - Glossary: `CONTEXT.md`
 
 ## What to Build
 
-OpenCode HTTP client (`platform.agent_client`) wrapping `httpx` for opencode's HTTP API: create session, prompt, stream events, check session status. Then the TDD pipeline node — the first real agent dispatch. TDD node: creates sandbox, dispatches agent with ticket content, reads `outcome_path` file for structured JSON output, commits agent's work to feature branch. Both input and output contracts logged to stdout and queryable. Agent-declared block (`status: blocked` in output) transitions ticket to Blocked.
+OpenCode HTTP client (`platform.agent_client`) wrapping `httpx` for opencode's HTTP API: create session, inject credentials via `PUT /auth/:id`, send message with per-invocation model/tools config, check session status, abort. Per-dispatch agent config generation (`platform.agent_config` + `platform.dispatch`): declarative `AgentConfig` and `SKILL_CONFIGS` dict mapping skill name to configuration, `to_opencode_json()` to generate `opencode.json`, and `dispatch()` for the full agent lifecycle (config write → container create → health check → credential inject → session create → message → outcome read → container destroy). Skills bind-mounted read-only into sandbox — no file copying per dispatch.
 
-After this slice, a ticket flows Ready → Implementing → Awaiting Review with real agent work committed to a feature branch of the target project and the correct ticket status visible in redmine.
+Then the TDD pipeline node — the first real agent dispatch. TDD node: uses `dispatch()`, commits agent's work to feature branch of target project. Both input and output contracts logged to stdout. Agent-declared block (`status: BLOCKED` in output) transitions ticket to Blocked.
+
+After this slice, a ticket flows Ready → Implementing → Awaiting Review with real agent work committed to a feature branch of the target project and the correct ticket status visible in Redmine.
 
 ## Requirements
 
 ### User Stories
 
 - As a **developer**, I want structured contracts between orchestrator and agent for each skill stage, so context is threaded predictably between stages.
+- As a **developer**, I want agent sandboxes to have controlled network access with no git credentials and unreadable API keys, so code stays local until I approve it.
 
 ### Domain Context
 
@@ -35,6 +38,14 @@ Outcome statuses:
 **Pipeline** (from reqs doc) — TDD stage:
 
 1. **TDD** — Orchestrator creates a feature branch from main. Agent writes code and tests, runs tests, exits with status and summary. Orchestrator commits the changes to the feature branch.
+
+**Sandbox Egress Policy** (from reqs doc):
+
+Agent sandboxes have controlled network access:
+- **Allowed:** LLM API endpoints (OpenRouter, Anthropic, OpenAI, etc.), package registries (PyPI, npm), configured MCP endpoints (e.g., Context7).
+- **Blocked:** Arbitrary internet, git remotes, and any destination not in the allowlist.
+
+LLM API keys are injected into opencode's process memory via HTTP API — never present in environment variables, files, or any agent-accessible location inside the sandbox.
 
 ### Behavioral Scenarios
 
@@ -54,6 +65,14 @@ Outcome statuses:
 5. Developer runs `symphony unblock hello-1`.
 6. Orchestrator resumes at Implementing.
 
+**Scenario: Sandbox attempts blocked network access**
+
+1. TDD agent tries to fetch `https://example.com/arbitrary-data` during implementation.
+2. Connection is blocked by egress policy — destination not in allowlist.
+3. Agent sees connection failure in its session output.
+4. Blocked attempt is logged to stdout: `blocked egress: https://example.com/arbitrary-data from ticket hello-1` with timestamp.
+5. Agent exits with fail or continues (depends on agent handling of the error).
+
 ### Acceptance Criteria
 
 - [AC-01] WHEN a ticket is in Ready state and an agent slot is available, the sandbox orchestration layer SHALL report a new session for that ticket and stdout SHALL log `ticket <id>: dispatching tdd` with the contract contents.
@@ -61,6 +80,9 @@ Outcome statuses:
 - [AC-11] WHEN an agent exits with `status: blocked`, stdout SHALL log `ticket <id>: blocked, reason: <reason>` and the ticket SHALL appear in the Blocked state in the front end and CLI.
 - [AC-14] WHEN a stage is dispatched, the input contract (containing skill name, ticket body, and carry-forward context) SHALL appear in stdout and be visible in the ticket's history in the front end.
 - [AC-15] WHEN an agent completes a stage, the output contract (containing status and structured data) SHALL appear in stdout and be visible in the ticket's history in the front end.
+- [AC-21] The configured egress allowlist (LLM API endpoints, package registries, MCP endpoints) SHALL be visible in stdout on startup. An agent sandbox SHALL be able to reach allowed destinations — observable by successful tool calls appearing in the agent session output.
+- [AC-22] IF an agent attempts network access to a destination not in the allowlist, THEN stdout SHALL log `blocked egress: <destination> from ticket <id>` with a timestamp and the agent's session output SHALL show the connection failure.
+- [AC-23] Any attempt by an agent to run a git command SHALL fail — observable by `git` returning an error in the agent session output. The orchestrator, not the agent, performs all git operations.
 
 ### Architectural Constraints
 
@@ -70,32 +92,122 @@ Outcome statuses:
 @dataclass
 class Session:
     session_id: str
-    base_url: str
-
-@dataclass
-class PromptResult:
-    prompt_id: str
-    admitted: bool
 
 class OpenCodeClient:
-    """httpx wrapper for opencode serve HTTP API (OpenAPI 3.1)."""
-    def __init__(self, base_url: str): ...
+    """httpx wrapper for opencode serve HTTP API."""
+    def __init__(self, base_url: str, client: httpx.AsyncClient | None = None): ...
 
-    async def create_session(self) -> Session: ...
-    async def prompt(self, session: Session, text: str) -> PromptResult: ...
-    async def stream_events(self, session: Session) -> AsyncIterator[dict]: ...
-    async def session_status(self, session: Session) -> dict: ...
+    async def auth_set(self, provider_id: str, api_key: str) -> bool:
+        """PUT /auth/{provider_id}  body: {"type": "api", "key": "..."}"""
+
+    async def create_session(self) -> Session:
+        """POST /session"""
+
+    async def send_message(
+        self,
+        session: Session,
+        parts: list[dict],                    # [{"type": "text", "text": "..."}]
+        model: tuple[str, str],               # (provider_id, model_id)
+        tools: dict[str, bool] | None = None, # {"bash": True, "read": True, "task": False}
+    ) -> dict:
+        """POST /session/{id}/message — blocks until agent turn complete.
+        Body: {"model": {"providerID": P, "modelID": M}, "tools": {...}, "parts": [...]}"""
+
+    async def session_status(self, session: Session) -> dict:
+        """GET /session/{id}"""
+
+    async def abort(self, session: Session) -> bool:
+        """POST /session/{id}/abort — kill a running session"""
+
+    async def close(self) -> None: ...
+```
+
+**Module: `platform.agent_config`** — per-skill agent configuration
+
+```python
+@dataclass
+class AgentConfig:
+    model: str                          # "openrouter/deepseek/deepseek-v4-flash"
+    provider: str                       # "openrouter"
+    permissions: dict                   # {"read": {"*.env": "deny", "*": "allow"}, "bash": {"sudo *": "deny", "*": "allow"}}
+    tools: dict[str, bool]              # {"bash": True, "read": True, "edit": True, "task": False, "webfetch": False}
+    mcps: dict[str, bool]               # {"playwright": True} — toggles only; MCP definitions baked into sandbox image
+
+def to_opencode_json(config: AgentConfig, provider_defs: dict, mcp_defs: dict) -> dict:
+    """Merges provider definitions, permissions, and MCP toggles into a valid opencode.json blob.
+    Provider defs and MCP defs come from the sandbox image (hardcoded platform constants)."""
+```
+
+**Module: `platform.dispatch`** — full agent lifecycle
+
+```python
+PROVIDER_DEFINITIONS: dict = {
+    "openrouter": {
+        "name": "OpenRouter",
+        "api": "https://openrouter.ai/api/v1",
+        "options": {"apiKey": "{env:OPENROUTER_API_KEY}"},
+        "models": {
+            "deepseek/deepseek-v4-flash": {"name": "DeepSeek V4 Flash", "limit": {"context": 131072}},
+        },
+    },
+}
+
+MCP_DEFS: dict = {}  # populated when MCP deps baked into sandbox image
+
+async def dispatch(
+    sandbox: Sandbox,
+    config: AgentConfig,
+    skill: str,
+    prompt: str,
+    workspace: str,
+    api_key: str,
+) -> dict:
+    """Full agent lifecycle. Idempotent — re-running with same workspace overwrites
+    opencode.json and creates a fresh container.
+
+    1. Write opencode.json to workspace root
+    2. Create container (skills and workspace bind-mounted)
+    3. Wait for GET /api/health → {"healthy": true}
+    4. PUT /auth/{provider} inject creds
+    5. POST /session create session
+    6. POST /session/{id}/message send prompt (blocks until agent done)
+    7. Read outcome_path from workspace, validate against stage contract
+    8. Destroy container
+    Returns validated outcome dict. Raises on failure — container always destroyed."""
+```
+
+**Module: `workflows.sdd.skill_configs`** — declarative skill → config mapping
+
+```python
+SKILL_CONFIGS: dict[str, AgentConfig] = {
+    "tdd": AgentConfig(
+        model="openrouter/deepseek/deepseek-v4-flash",
+        provider="openrouter",
+        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}, "edit": {"*": "allow"}},
+        tools={"bash": True, "read": True, "edit": True, "task": False, "webfetch": False},
+        mcps={},
+    ),
+}
 ```
 
 **Decisions made** (from gap analysis):
 
+- Per-dispatch `opencode.json` generated by the orchestrator and written to workspace root before container creation. Contains provider definitions, permission rules, and MCP toggles.
+- `dispatch()` is the single platform function for the full agent lifecycle: config write → container create → health check (`GET /api/health`) → credential inject (`PUT /auth/:id`) → session create (`POST /session`) → prompt (`POST /session/{id}/message`, blocks) → outcome read → container destroy. Always destroys container before raising on failure.
+- Per-invocation model selection via `model: {providerID, modelID}` in the message body. Per-invocation tool enable/disable via `tools: {tool_name: bool}` in the message body.
+- Skills are bind-mounted read-only from `.agents/skills/` into the sandbox. No file copying per dispatch. Skills retain `if git is available` git steps — git is unavailable in sandbox per egress policy.
+- No named agent profiles — model and tools are set per invocation via `POST /session/{id}/message`.
 - JSON contracts via prompt embed (outbound) and `outcome_path` file (inbound). Skills write structured JSON; orchestrator reads and validates.
-- Workspace is host-persistent, bind-mounted into ephemeral sandbox containers per dispatch. Orchestrator owns all git state.
-- Skills are copied from bp-agents `.agents/skills/` into workspace before dispatch.
+
+**ADR-0005**: No long-lived credentials in agent sandbox — LLM API keys are never stored in environment variables, files, or any persistent location inside the sandbox container. The orchestrator injects credentials into opencode's memory via `PUT /auth/:id` after container startup and before the prompt. Credentials exist only in the opencode server process for the duration of the sandbox session.
+
+**ADR-0001**: LangGraph as pipeline engine — free, MIT-licensed, self-hosted. Provides checkpointer, retry policy, timeout, interrupt/resume, and state streaming.
 
 **Open Risks** (from gap analysis):
 
-- **opencode serve API stability** — The HTTP API is relatively new. Contract shape may change. Version-pin the opencode image.
+- **opencode /session API stability** — The `/session/*` and `PUT /auth/:id` endpoints are newer than the `/api/*` surface. Contract shape may change. Version-pin the opencode npm package in the sandbox image.
+- **opencode message endpoint blocking** — Assumes `POST /session/{id}/message` blocks until the agent turn is complete (tool loop handled server-side). If it returns after a single response, a polling fallback via `GET /session/{id}` is needed.
+- **auth.set provider recognition** — `PUT /auth/:id` requires the provider to be defined in `opencode.json` for opencode to accept the key. Provider ID in the URL must match the provider key in the config.
 - **Outcome_path convention** — Skills are instructed to write to `outcome_path`. If a skill doesn't respect this (e.g., writes somewhere else), the orchestrator gets no output. Mitigated by prompt instructions and verified in pipeline tests.
 
 ### Testing Decisions
@@ -105,15 +217,19 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 ### Non-Functional Requirements
 
 - Secrets must never be logged or written to contracts, traces, or sandbox filesystems.
-- The target project must not be this repo (bp-agents)
+- The target project must not be this repo (bp-agents).
 
 ## This Ticket's Acceptance Criteria
 
-- [ ] `OpenCodeClient` creates a session via opencode serve HTTP API and returns `Session`
-- [ ] `OpenCodeClient.prompt()` sends text to the session and receives admission response
-- [ ] `OpenCodeClient.stream_events()` yields events from a running session
-- [ ] TDD node creates sandbox, dispatches agent with ticket body, waits for completion
-- [ ] TDD node reads structured output from `outcome_path` and validates it as `TddOutput`
+- [ ] `OpenCodeClient` creates session via `POST /session`, sends message via `POST /session/{id}/message`, gets status via `GET /session/{id}`
+- [ ] `OpenCodeClient.auth_set()` injects credentials via `PUT /auth/{provider_id}` — never via env vars or files
+- [ ] `OpenCodeClient.abort()` kills a running session via `POST /session/{id}/abort`
+- [ ] `AgentConfig` dataclass with model, provider, permissions, tools, mcps fields
+- [ ] `to_opencode_json()` generates valid `opencode.json` from `AgentConfig` + provider defs + MCP defs
+- [ ] `dispatch()` executes full agent lifecycle: config write → container create → health check → credential inject → session create → message → outcome read → container destroy
+- [ ] `dispatch()` always destroys container on failure
+- [ ] Skills bind-mounted read-only — no `shutil.copytree` of skills per dispatch
+- [ ] TDD node uses `dispatch()` with `SKILL_CONFIGS["tdd"]`
 - [ ] Orchestrator commits agent changes to feature branch of target project after TDD success
 - [ ] Input contract (skill, ticket body, context) logged to stdout
 - [ ] Output contract (status, summary, test results) logged to stdout
@@ -123,44 +239,3 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 
 - #02 Tracker port + Pipeline engine skeleton
 - #03 Sandbox adapter + Egress proxy
-
-## Outcome
-
-QA stage escalated after 3 rounds. Code is complete and passing all tests (119 unit, 17 integration). All lint passes.
-
-### What was built
-
-- `OpenCodeClient` (httpx wrapper for opencode serve HTTP API): create_session, prompt, stream_events, session_status
-- `TddNode`: sandbox creation, agent dispatch with contract logging, outcome_path reading, feature branch creation
-- Orchestrator poll loop with Redmine integration: ticket discovery, state transitions (ready → implementing → blocked/awaiting_review)
-- Input contracts logged to stdout and posted to Redmine journals (AC-01, AC-14, AC-07 PASS verified)
-
-### Fixes applied in this session
-
-1. **route_ticket routing bug** (`graph.py:120`) — `blocked_reason` routing condition blocked by `status != 'blocked'` guard. Removed guard so blocked reasons route to the `block` node.
-2. **ConnectError handler** (`tdd.py`) — Fixed log format to `"blocked, reason: sandbox unreachable"` (AC-11). Added Redmine tracker update before return.
-3. **bootstrap env** (`bootstrap_redmine.py`) — Changed empty `BP_TARGET_REPO_PATH` default to match docker-compose default.
-4. **gVisor runsc networking** (`docker_sandbox.py`, `config.py`, `main.py`, `docker-compose.yml`) — Three-way reconciliation:
-
-   **Constraint #03:** gVisor netstack doesn't forward UDP on user-defined bridges — Docker DNS (127.0.0.11) uses iptables DNAT rules gVisor doesn't apply (google/gvisor#7469). Fix from #03: default bridge + host gateway proxy.
-
-   **Constraint #04:** Orchestrator on `bp_agents` can't reach sandbox on default bridge. `docker network connect` broken under runsc.
-
-   **Reconciliation:** Sandbox created directly on `bp_agents` network + explicit `dns=["8.8.8.8"]` bypasses Docker DNS + egress-proxy assigned static IP `172.20.0.10` so sandbox reaches proxy by IP without Docker DNS hostname resolution.
-
-   Files changed:
-   - `docker-compose.yml` — `bp_agents` network gets explicit subnet (`172.20.0.0/16`), egress-proxy gets `ipv4_address: 172.20.0.10`
-   - `config.py` — Added `dns_servers: list[str] | None`, proxy defaults changed to `http://172.20.0.10:8080`
-   - `docker_sandbox.py` — Passes `dns` kwarg when `config.dns_servers` is set
-   - `main.py` — `network="bp_agents"` already set in previous fix
-
-### What needs human action
-
-**Rebuild and redeploy the orchestrator container** with the latest code (commit `bdb9fcc`) to verify the gVisor networking fix. The code fix is committed and unit-tested, but live E2E verification requires the updated orchestrator to be running.
-
-### Outcome artefacts
-
-- `.scratch/orchestrator/outcomes/implement-outcome.json`
-- `.scratch/orchestrator/outcomes/review-outcome.json`
-- `.scratch/orchestrator/outcomes/reduction-outcome.json`
-- `.scratch/orchestrator/outcomes/verify-outcome.json`

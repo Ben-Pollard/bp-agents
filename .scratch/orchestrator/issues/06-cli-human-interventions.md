@@ -129,7 +129,7 @@ None specific to this slice.
 
 - [ ] `symphony approve <id>` merges feature branch to main, transitions to Done
 - [ ] `symphony reject <id> --reason "..."` transitions back to Implementing with reason in contract
-- [ ] `symphony realign <id> --acs "..."` records AC changelog entry, transitions to Implementing with new ACs
+- [ ] `symphony realign <id> --acs "..."` records AC changelog entry (ADDED/MODIFIED/REMOVED), transitions to Implementing with new ACs
 - [ ] `symphony unblock <id> [--note "..."]` resumes at blocked stage
 - [ ] `symphony status [<id>]` shows current state for one or all tickets
 - [ ] All actions appear in stdout with user, timestamp, reason

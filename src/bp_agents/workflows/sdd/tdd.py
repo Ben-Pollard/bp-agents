@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import json
 import logging
@@ -125,7 +126,18 @@ class TddNode:
                     except (
                         httpx.ConnectError,
                         httpx.RemoteProtocolError,
+                        httpx.HTTPStatusError,
                     ) as exc:
+                        if attempt < self._max_retries:
+                            logger.warning(
+                                "ticket %s: sandbox not ready, retrying (%d/%d): %s",
+                                ticket_id,
+                                attempt,
+                                self._max_retries,
+                                exc,
+                            )
+                            await asyncio.sleep(3)
+                            continue
                         logger.error(
                             "ticket %s: blocked, reason: sandbox unreachable: %s",
                             ticket_id,

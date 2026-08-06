@@ -112,6 +112,18 @@ async def main_async(
     sandbox_config = None
     if target_repo_path:
         sandbox = DockerSandbox(egress_policy=egress_policy)
+        sandbox_env = {}
+        for key in (
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "OPENROUTER_API_KEY",
+            "LANGFUSE_PUBLIC_KEY",
+            "LANGFUSE_SECRET_KEY",
+        ):
+            val = os.getenv(key)
+            if val:
+                sandbox_env[key] = val
+
         sandbox_config = SandboxConfig(
             image=SANDBOX_IMAGE,
             workspace_path=target_repo_path,
@@ -121,6 +133,7 @@ async def main_async(
             http_proxy="http://172.20.0.10:8080",
             https_proxy="http://172.20.0.10:8080",
             dns_servers=["8.8.8.8"],
+            env=sandbox_env,
             command=["opencode", "serve", "--port", "8080", "--hostname", "0.0.0.0"],
         )
 

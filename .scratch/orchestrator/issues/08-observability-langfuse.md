@@ -11,9 +11,9 @@ Status: ready-for-agent
 
 ## What to Build
 
-Integrate Langfuse for observability. LangGraph callback pushes orchestrator-level traces to Langfuse. Agent session content at LLM-conversation granularity appears in Langfuse traces. Complete ticket history recoverable from ticket ID: every state transition, every contract exchanged, every human intervention, every AC changelog entry, every failure and retry. Langfuse runs in Docker Compose, accessible via documented URL.
+Integrate Langfuse for observability. LangGraph callback pushes orchestrator-level traces to Langfuse. Agent session content at LLM-conversation granularity appears in Langfuse traces. Contract exchanges appear as spans within ticket traces. Complete ticket history recoverable from ticket ID: every state transition, every contract exchanged, every human intervention, every AC changelog entry, every failure and retry.
 
-No custom dashboard — Langfuse is the trace front-end; Redmine is the ticket state front-end; CLI is the action surface.
+No custom dashboard — Langfuse is the trace front-end; Redmine is the ticket state front-end (issue list, trackers, status); CLI is the action surface. Langfuse runs in Docker Compose, accessible via documented URL in README.
 
 ## Requirements
 
@@ -40,23 +40,37 @@ This information is surfaced in a dashboard (implementation may adopt existing t
 
 The system SHALL serve one or more web front-ends, startable via the service orchestration layer alongside the orchestrator. The README SHALL document how to discover and access each front-end.
 
+Front-ends expose:
+- Current ticket state for all tickets across all projects, filterable by project and state.
+- State transition history per ticket.
+- Contract exchanges per stage dispatch.
+- Agent session content at LLM-conversation level.
+- Human intervention history per ticket.
+- AC changelog per ticket.
+- Action surface: approve, reject, realign, unblock.
+
 Adopted tools (e.g., Jaeger for traces, Langfuse for eval data, custom dashboard for ticket state/actions) are front-ends. What matters is that the information and actions are accessible via a discoverable web interface.
 
 ### Behavioral Scenarios
 
-**Scenario: Developer discovers and accesses front-ends** — Langfuse portion
+**Scenario: Developer discovers and accesses front-ends**
 
 1. Developer starts the orchestrator and all services as documented in the README.
 2. Orchestrator and all front-end services start.
 3. Developer follows the README to find the URL for each front-end.
-4. Developer opens the trace front-end, sees agent session content at LLM-conversation level for a completed stage.
+4. Developer opens a browser to the ticket-state front-end, sees all projects and tickets listed by current state.
+5. Developer navigates to a specific ticket, sees its state history, contract exchanges, and intervention log.
+6. Developer opens the trace front-end, sees agent session content at LLM-conversation level for a completed stage.
 
 ### Acceptance Criteria
 
+- [AC-27] WHEN a ticket changes state, stdout SHALL log the transition (`ticket <id>: <from-state> -> <to-state>`) with a timestamp and the transition SHALL appear in the ticket's state history in the front end.
 - [AC-28] WHEN a contract is dispatched or returned, the full contract SHALL appear in stdout and be queryable in the ticket's history in the front end.
-- [AC-30] WHEN a realignment occurs, the ticket's AC changelog (queryable in the front end) SHALL show what was added, modified, or removed, with timestamp and actor.
+- [AC-29] WHEN a human performs an approve, reject, realign, or unblock action, stdout SHALL log the action with user, timestamp, and reason, and the action SHALL appear in the ticket's intervention history in the front end.
 - [AC-31] Given a ticket ID, the front end SHALL return the complete history: state transitions, contracts, human interventions, AC changelog, failures, and retries.
 - [AC-32] The front end SHALL list current ticket state for all tickets across all projects, filterable by project and state.
+- [AC-34] All front-ends SHALL be startable via the service orchestration layer alongside the orchestrator and SHALL be reachable by following the README.
+- [AC-35] The README SHALL include discoverable instructions for accessing every front-end (URL, credentials if any, what each front-end shows).
 
 ### Architectural Constraints
 
@@ -85,6 +99,8 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 - [ ] Langfuse accessible via documented URL in README
 - [ ] Traces tagged with ticket ID and project for filtering
 - [ ] Contract exchanges appear as spans within ticket traces
+- [ ] Redmine serves as ticket state front-end (issue list, traker status, comments)
+- [ ] README documents how to access each front-end: Redmine (ticket state), Langfuse (traces), CLI (actions)
 
 ## Blocked by
 

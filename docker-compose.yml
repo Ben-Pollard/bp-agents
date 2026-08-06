@@ -86,6 +86,7 @@ services:
       SALT: langfuse_salt_dev_only
       NEXTAUTH_URL: http://localhost:8083
       TELEMETRY_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: "disabled"
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,6 +106,11 @@ services:
       BP_PROJECT_ID: default
       BP_ENV_OUTPUT: /data/env/.env
       REDMINE_CONTAINER: bp-agents-redmine-1
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
     volumes:
       - bp_env:/data/env
       - /var/run/docker.sock:/var/run/docker.sock

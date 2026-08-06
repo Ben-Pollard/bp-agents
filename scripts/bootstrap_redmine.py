@@ -245,6 +245,17 @@ def _write_env(api_key: str) -> None:
         "BP_SKILLS_PATH": os.getenv("BP_SKILLS_PATH", ".agents/skills"),
         "BP_SANDBOX_RUNTIME": os.getenv("BP_SANDBOX_RUNTIME", "runsc"),
     }
+    api_key_vars = [
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENROUTER_API_KEY",
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+    ]
+    for k in api_key_vars:
+        val = os.getenv(k)
+        if val:
+            env_vars[k] = val
     lines = []
     if os.path.exists(env_path):
         existing = {}

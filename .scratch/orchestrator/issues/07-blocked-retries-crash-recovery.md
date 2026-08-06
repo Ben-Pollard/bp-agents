@@ -15,7 +15,7 @@ Three resilience behaviors:
 
 1. **Retries** — Each stage has configurable retry limit. On `fail` outcome, retry with backoff. When retries exhausted, auto-transition to Blocked with `auto:` prefix reason.
 
-2. **Blocked state management** — Blocked reason prefixed with `auto:` (retry limit, timeout) or `agent:` (agent-declared). Blocked ticket holds until human unblock (via CLI, already in #06). Agent-declared block already works from #04; generalize the reason prefixing here.
+2. **Blocked state management** — Blocked reason prefixed with `auto:` (retry limit, timeout) or `agent:` (agent-declared). Blocked ticket holds until human unblock (via CLI, in #06). Agent-declared block from #04; generalize reason prefixing here.
 
 3. **Crash recovery** — On orchestrator restart: read SqliteSaver for all in-flight tickets. If sandbox still running, wait for completion. If sandbox gone, re-dispatch current stage. If outcome written but unapplied, process without re-dispatch. Detect and teardown orphaned sandboxes. Emit recovery event per ticket.
 
@@ -47,6 +47,10 @@ On orchestrator restart, the system:
 - Detects and tears down any orphaned sandboxes from the prior run.
 - Emits a recovery event per ticket with the stage resumed.
 - Resumes within one poll interval of restart.
+
+**Stage Timeouts** (from reqs doc):
+
+Each stage has a configurable timeout. On timeout, the orchestrator kills the agent, records a timeout event, and treats it as a failure (retry or block per stage config).
 
 ### Behavioral Scenarios
 
@@ -86,6 +90,7 @@ On orchestrator restart, the system:
 - [AC-18] IF a ticket was in a stage and the sandbox orchestration layer reports no session for it on restart, THEN stdout SHALL log a re-dispatch for that stage only, and the sandbox orchestration layer SHALL report a new session — no session SHALL be reported for any earlier completed stage of that ticket.
 - [AC-19] WHEN the orchestrator restarts and finds an unprocessed stage outcome, stdout SHALL log `ticket <id>: processing unapplied outcome from <stage>` and the sandbox orchestration layer SHALL report no new session for that stage.
 - [AC-20] WHEN the orchestrator restarts and finds an orphaned session reported by the sandbox orchestration layer, stdout SHALL log `tearing down orphaned session for ticket <id>` and the sandbox orchestration layer SHALL report that session as torn down.
+- [AC-26] WHEN a stage exceeds its configured timeout, stdout SHALL log `ticket <id>: stage <stage> timed out`, the sandbox orchestration layer SHALL report the session as stopped, and the timeout SHALL count as a failure for retry purposes.
 
 ### Architectural Constraints
 
@@ -95,7 +100,7 @@ On orchestrator restart, the system:
 - SQLite for state persistence via LangGraph's `SqliteSaver`.
 - LangGraph checkpointer atomic at node boundaries; `outcome_path` is written-then-read with crash edge cases handled.
 - Node functions are idempotent: check for existing opencode session before creating, check for existing `outcome_path` before re-dispatching.
-- Error handling: three categories — transient retry, agent-declared block, timeout.
+- Error handling: three categories — transient retry (LangGraph), agent-declared block, timeout. Container always destroyed on failure.
 
 ### Testing Decisions
 
@@ -110,6 +115,8 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 ## This Ticket's Acceptance Criteria
 
 - [ ] Stage exceeding retry limit (configurable) transitions to Blocked with `auto:` prefix reason
+- [ ] Stage timeout kills agent session and counts as failure for retry purposes
+- [ ] Timeout event logged with ticket ID, stage name, and duration
 - [ ] Retry count resets per stage, not cumulative across pipeline
 - [ ] Orchestrator restart recovers each in-flight ticket at its current stage
 - [ ] Unapplied outcome written before crash is processed on restart without re-dispatch

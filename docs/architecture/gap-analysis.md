@@ -1,26 +1,30 @@
 # Architecture Gap Analysis
 
-> Last updated: 2026-08-02
+> Last updated: 2026-08-06
 > Triggered by: `docs/requirements/orchestrator-agent-contract.md`
 
 ## Current State
 
-Greenfield. No production code exists. The repo has scaffolding: empty `src/bp_agents/` package, OpenCode agent definitions in `opencode.json`, and a comprehensive requirements document for the orchestrator-agent pipeline. No ADRs, no architecture docs, no infrastructure.
+Issue #04 complete: `OpenCodeClient` (httpx wrapper using `/api/session/*` endpoints), `TddNode` with env-var credential forwarding, Redmine tracker via `platform.tracker`, gVisor sandbox with egress proxy via `platform.sandbox`, LangGraph pipeline engine with SQLite checkpointer. ADRs 0001-0004 in place.
 
 The requirements define an orchestrator that discovers tickets from a tracker, dispatches coding agents through a pipeline of skill stages (TDD → code review → revision → minimizing-code → behavioral verification → deterministic verification → human approval → merge), persists state for crash recovery, and surfaces observability via Langfuse and stdout.
 
-Target: single-developer, self-hosted, Docker Compose-managed. V1 scope. Behavioral verification deferred.
+Target: single-developer, self-hosted, Docker Compose-managed. V1 scope.
 
 ## Required Changes
 
-Build from scratch:
+Build from scratch (completed or in progress) plus credential security updates:
 
-- **Platform layer** — LangGraph runner, tracker port, sandbox port, opencode HTTP client, CLI framework. Reusable across workflows.
+- **Platform layer** — LangGraph runner, tracker port, sandbox port, opencode HTTP client, CLI framework, agent config generation, dispatch lifecycle. Reusable across workflows.
 - **SDD workflow** — Specific LangGraph graph implementing the software development pipeline. Nested: feature graph contains ticket subgraphs.
 - **Tracker port** — Generic tracker ABC in platform. SDD workflow provides the Redmine adapter (`RedmineTracker`).
 - **Sandbox adapter** — `docker-py` wrapper with gVisor runtime, creating ephemeral containers per dispatch with HTTP forward proxy for egress enforcement.
-- **Agent client** — `httpx`-based wrapper for opencode's HTTP API (create session, prompt, stream events).
-- **Infrastructure** — Docker Compose managing orchestrator, Redmine, Langfuse, SQLite, and egress proxy.
+- **Agent client** — `httpx`-based wrapper for opencode's HTTP API. Must be rewritten from `/api/session/*` to `/session/*` endpoints with `auth_set`, `send_message`, `abort`.
+- **Credential security** — Replace env-var credential forwarding with `PUT /auth/:id` API injection. Credentials never in env vars or files inside sandbox. No long-lived creds in sandbox (ADR-0005).
+- **Per-dispatch config generation** — New `platform/dispatch.py` generates full `opencode.json` per skill dispatch, writes to workspace before container creation. Per-invocation model and tools set via `POST /session/{id}/message`.
+- **Declarative skill configs** — New `workflows/sdd/skill_configs.py` with `SKILL_CONFIGS` dict mapping skill name → `AgentConfig(model, provider, permissions, tools, mcps)`.
+- **Skills mount** — Replace `shutil.copytree` of skills with bind mount (read-only). No file copying per dispatch.
+- **Infrastructure** — Docker Compose managing orchestrator, Redmine, Langfuse, SQLite, and egress proxy. One sandbox image with all MCP dependencies baked in.
 
 ## Module Interfaces
 
@@ -62,9 +66,9 @@ from abc import ABC, abstractmethod
 class SandboxConfig:
     image: str                  # e.g. "symphony-agent:latest"
     workspace_path: str         # host path to bind-mount
-    skills_path: str            # host path for .agents/skills/
+    skills_path: str            # host path for .agents/skills/ (bind-mounted read-only)
     runtime: str                # "runsc" (gVisor) or "" (default)
-    env: dict[str, str]         # HTTP_PROXY, HTTPS_PROXY, outcome_path, etc.
+    env: dict[str, str]         # HTTP_PROXY, HTTPS_PROXY, outcome_path only — no credentials
     timeout_seconds: int
     mem_limit: str              # e.g. "512m"
     cpu_count: int
@@ -96,21 +100,34 @@ class DockerSandbox(Sandbox):
 @dataclass
 class Session:
     session_id: str
-    base_url: str
-
-@dataclass
-class PromptResult:
-    prompt_id: str
-    admitted: bool
 
 class OpenCodeClient:
-    """httpx wrapper for opencode serve HTTP API (OpenAPI 3.1)."""
-    def __init__(self, base_url: str): ...
+    """httpx wrapper for opencode serve HTTP API."""
+    def __init__(self, base_url: str, client: httpx.AsyncClient | None = None): ...
 
-    async def create_session(self) -> Session: ...
-    async def prompt(self, session: Session, text: str) -> PromptResult: ...
-    async def stream_events(self, session: Session) -> AsyncIterator[dict]: ...
-    async def session_status(self, session: Session) -> dict: ...
+    async def auth_set(self, provider_id: str, api_key: str) -> bool:
+        """PUT /auth/{provider_id}  body: {"type": "api", "key": "..."}"""
+
+    async def create_session(self) -> Session:
+        """POST /session"""
+
+    async def send_message(
+        self,
+        session: Session,
+        parts: list[dict],                    # [{"type": "text", "text": "..."}]
+        model: tuple[str, str],               # (provider_id, model_id)
+        tools: dict[str, bool] | None = None, # {"bash": True, "read": True, "task": False}
+    ) -> dict:
+        """POST /session/{id}/message — blocks until agent turn complete.
+        Body: {"model": {"providerID": P, "modelID": M}, "tools": {...}, "parts": [...]}"""
+
+    async def session_status(self, session: Session) -> dict:
+        """GET /session/{id}"""
+
+    async def abort(self, session: Session) -> bool:
+        """POST /session/{id}/abort — kill a running session"""
+
+    async def close(self) -> None: ...
 ```
 
 ### `platform.cli` — CLI framework
@@ -128,6 +145,109 @@ class CLI:
 #   symphony realign <ticket-id> --acs "..."
 #   symphony unblock <ticket-id> [--note "..."]
 #   symphony status [<ticket-id>]
+```
+
+### `platform.agent_config` — per-skill agent configuration
+
+```python
+@dataclass
+class AgentConfig:
+    model: str                          # "openrouter/deepseek/deepseek-v4-flash"
+    provider: str                       # "openrouter"
+    permissions: dict                   # {"read": {"*.env": "deny", "*": "allow"}, "bash": {"sudo *": "deny", "*": "allow"}}
+    tools: dict[str, bool]              # {"bash": True, "read": True, "edit": True, "task": False, "webfetch": False}
+    mcps: dict[str, bool]               # {"playwright": True} — toggles only; MCP definitions baked into sandbox image
+
+def to_opencode_json(config: AgentConfig, provider_defs: dict, mcp_defs: dict) -> dict:
+    """Merges provider definitions, permissions, and MCP toggles into a valid opencode.json blob.
+    Provider defs and MCP defs come from the sandbox image (hardcoded platform constants)."""
+```
+
+### `platform.dispatch` — full agent lifecycle
+
+```python
+PROVIDER_DEFINITIONS: dict = {
+    "openrouter": {
+        "name": "OpenRouter",
+        "api": "https://openrouter.ai/api/v1",
+        "options": {"apiKey": "{env:OPENROUTER_API_KEY}"},
+        "models": {
+            "deepseek/deepseek-v4-flash": {"name": "DeepSeek V4 Flash", "limit": {"context": 131072}},
+        },
+    },
+}
+
+MCP_DEFS: dict = {}  # populated when MCP deps baked into sandbox image
+
+async def dispatch(
+    sandbox: Sandbox,
+    config: AgentConfig,
+    skill: str,
+    prompt: str,
+    workspace: str,
+    api_key: str,
+) -> dict:
+    """Full agent lifecycle. Idempotent — re-running with same workspace overwrites
+    opencode.json and creates a fresh container.
+
+    1. Write opencode.json to workspace root
+    2. Create container (skills and workspace bind-mounted)
+    3. Wait for GET /api/health → {"healthy": true}
+    4. PUT /auth/{provider} inject creds
+    5. POST /session create session
+    6. POST /session/{id}/message send prompt (blocks until agent done)
+    7. Read outcome_path from workspace, validate against stage contract
+    8. Destroy container
+    Returns validated outcome dict. Raises on failure — container always destroyed."""
+```
+
+### `workflows.sdd.skill_configs` — declarative skill → config mapping
+
+```python
+SKILL_CONFIGS: dict[str, AgentConfig] = {
+    "tdd": AgentConfig(
+        model="openrouter/deepseek/deepseek-v4-flash",
+        provider="openrouter",
+        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}, "edit": {"*": "allow"}},
+        tools={"bash": True, "read": True, "edit": True, "task": False, "webfetch": False},
+        mcps={},
+    ),
+    "code_review": AgentConfig(
+        model="openrouter/deepseek/deepseek-v4-flash",
+        provider="openrouter",
+        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}, "edit": {"*": "deny"}},
+        tools={"bash": True, "read": True, "edit": False, "task": False, "webfetch": False},
+        mcps={},
+    ),
+    "revision": AgentConfig(
+        model="openrouter/deepseek/deepseek-v4-flash",
+        provider="openrouter",
+        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}, "edit": {"*": "allow"}},
+        tools={"bash": True, "read": True, "edit": True, "task": False, "webfetch": False},
+        mcps={},
+    ),
+    "minimizing_code": AgentConfig(
+        model="openrouter/deepseek/deepseek-v4-flash",
+        provider="openrouter",
+        permissions={"read": {"*": "allow"}, "edit": {"*": "deny"}},
+        tools={"bash": True, "read": True, "edit": False, "task": False, "webfetch": False},
+        mcps={},
+    ),
+    "behavioral_verify": AgentConfig(
+        model="openrouter/anthropic/claude-sonnet-4",
+        provider="openrouter",
+        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}},
+        tools={"bash": True, "read": True, "task": False, "webfetch": False},
+        mcps={"playwright": True},
+    ),
+    "deterministic_gate": AgentConfig(
+        model="openrouter/deepseek/deepseek-v4-flash",
+        provider="openrouter",
+        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}},
+        tools={"bash": True, "read": True, "edit": False, "task": False},
+        mcps={},
+    ),
+}
 ```
 
 ### `workflows.sdd.contracts` — SDD-specific types and stage contracts
@@ -336,7 +456,7 @@ LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_HOST=http://langfuse:3000
 
-# Model API (for orchestrator's own agent dispatches)
+# Model API (for orchestrator to inject into sandbox via PUT /auth)
 OPENROUTER_API_KEY=sk-or-...
 
 # Projects
@@ -358,54 +478,61 @@ LangGraph's `SqliteSaver` manages its own schema. The orchestrator's persisted s
 - **ADR-0002**: gVisor/Docker sandbox with ephemeral containers per dispatch. `docker-py` adapter, `--runtime=runsc`. Fallback to hardened plain Docker if gVisor compatibility fails smoke test.
 - **ADR-0003**: Redmine as tracker — self-hosted project management with REST API for ticket CRUD and state management. Replaced Plane.so which had unresolvable API (POST /issues/ 404) and credential issues.
 - **ADR-0004**: Langfuse for observability — agent traces, orchestrator traces, contract exchanges, and future eval platform. Single pane for all trace data.
+- **ADR-0005**: No long-lived credentials in agent sandbox — LLM API keys are never stored in environment variables, files, or any persistent location inside the sandbox container. The orchestrator injects credentials into opencode's memory via `PUT /auth/:id` after container startup and before the prompt. Credentials exist only in the opencode server process for the duration of the sandbox session.
 - SQLite for state persistence via LangGraph's `SqliteSaver`. Chosen over Postgres for single-machine self-host simplicity. Swappable.
 - JSON contracts via prompt embed (outbound) and `outcome_path` file (inbound). Skills write structured JSON; orchestrator reads and validates.
 - Workspace is host-persistent, bind-mounted into ephemeral sandbox containers per dispatch. Orchestrator owns all git state.
-- Skills are copied from bp-agents `.agents/skills/` into workspace before dispatch. Skills retain `if git is available` git steps — git is unavailable in sandbox per egress policy.
+- Skills are bind-mounted read-only from `.agents/skills/` into the sandbox. No file copying per dispatch. Skills retain `if git is available` git steps — git is unavailable in sandbox per egress policy.
+- Full `opencode.json` generated per dispatch by the orchestrator and written to workspace root before container creation. Contains provider definitions, permission rules, and MCP toggles. No named agent profiles — model and tools are set per invocation via `POST /session/{id}/message`.
+- `dispatch()` is the single platform function for the full agent lifecycle: config write → container create → health check (`GET /api/health`) → credential inject (`PUT /auth/:id`) → session create (`POST /session`) → prompt (`POST /session/{id}/message`, blocks) → outcome read → container destroy. Always destroys container before raising on failure.
+- Per-invocation model selection via `model: {providerID, modelID}` in the message body. Per-invocation tool enable/disable via `tools: {tool_name: bool}` in the message body.
+- `SKILL_CONFIGS` declarative dict in `workflows.sdd.skill_configs` maps skill name → `AgentConfig(model, provider, permissions, tools, mcps)`. Workflow nodes declare intent; platform's `dispatch()` realizes it.
+- MCP dependencies baked into the sandbox image at build time. Per-dispatch opencode.json toggles `enabled: true/false` per skill. A single general-purpose sandbox image serves all skills.
 - Feature-level nested graph: one LangGraph graph per feature, containing ticket subgraphs (TDD → review → revision).
 - Node functions are idempotent: check for existing opencode session before creating, check for existing `outcome_path` before re-dispatching.
 - SDD-specific contracts (TicketState, StageName, InterventionType, ACChange, Intervention) live in `workflows.sdd`, not `platform.contracts`. Platform contracts are workflow-agnostic. The tracker port is platform-level; `RedmineTracker` and `Ticket` are SDD adapters.
 - All services managed via Docker Compose: orchestrator, Redmine, Langfuse, egress proxy.
 
-## Decisions Deferred
+## Out of Scope for V1
 
-- **Behavioral verification sandbox capabilities** — Browser, Docker-in-Docker, or app-as-Compose-service for E2E AC verification. Scope deferred due to complexity. Revisit when V1 pipeline is stable.
-- **Data lifecycle / retention** — NFR calls for configurable retention pruning of trace and contract data. Deferred to V2.
-- **E2B / Firecracker / Kata Containers** — Ruled out for V1. gVisor is the right point on the isolation spectrum for single-tenant self-host. Revisit only if a specific task demonstrates need.
+- **Data lifecycle / retention** — NFR calls for configurable retention pruning of trace and contract data.
+- **Multi-user deployment** — Single developer, local machine.
 
 ## Affected Dimensions
 
 | Dimension | Impact |
-|---|---|
-| Module decomposition | Platform/workflow split; 7 modules defined |
-| Interface design | Concrete ABCs and TypedDicts for tracker, sandbox, agent_client, stage contracts |
-| Seam placement | Tracker port and sandbox are platform ports with workflow adapters. SDD-specific types (TicketState, StageName, InterventionType) live in workflows.sdd, not platform |
+|---|---|---|
+| Module decomposition | Platform/workflow split; 10 modules defined (platform: contracts, tracker, sandbox, agent_client, agent_config, dispatch, cli; workflow: contracts, graph, skill_configs, tracker) |
+| Interface design | Concrete ABCs, TypedDicts, dataclasses for tracker, sandbox, agent_client, AgentConfig, dispatch, stage contracts |
+| Seam placement | Tracker port and sandbox are platform ports with workflow adapters. dispatch() is the seam between workflow (AgentConfig) and platform (container lifecycle). SDD-specific types live in workflows.sdd |
 | Dependency direction | Nodes receive deps via Runtime[Context]; platform layer has no workflow dependency |
-| Domain boundaries | Orchestrator ↔ Agent separated by JSON contracts and sandbox boundary |
-| Data models | TicketState, StageName, stage output types, SDDFeatureState defined |
-| Data flow | Push: orchestrator polls Redmine → dispatches agent → reads outcome_path → updates Redmine |
+| Domain boundaries | Orchestrator ↔ Agent separated by JSON contracts and sandbox boundary. Credentials cross boundary via HTTP API only — never env or disk |
+| Data models | TicketState, StageName, stage output types, SDDFeatureState, AgentConfig defined |
+| Data flow | Push: orchestrator polls Redmine → generates opencode.json → dispatches agent via HTTP API → reads outcome_path → updates Redmine |
 | State ownership | LangGraph checkpointer owns all state; orchestrator is sole writer |
 | Storage technology | SQLite for state; Redmine (Postgres internally) for ticket data |
-| Protocol choices | REST (Redmine), HTTP API (opencode), HTTP_PROXY (egress), JSON (contracts) |
+| Protocol choices | REST (Redmine), HTTP API (opencode serve: /session, /auth, /api/health), HTTP_PROXY (egress), JSON (contracts) |
 | Message/event architecture | LangGraph state transitions are observable events; stdout logging per ACs |
-| Integration patterns | HTTP API clients for external systems; adapters hide protocol details |
-| Reliability | LangGraph RetryPolicy, timeout, interrupt/resume, checkpoint-based crash recovery |
+| Integration patterns | HTTP API clients for external systems; adapters hide protocol details. Single dispatch() function encapsulates container lifecycle |
+| Reliability | LangGraph RetryPolicy, timeout, interrupt/resume, checkpoint-based crash recovery. dispatch() always destroys container on failure |
 | Consistency model | Checkpointer atomic at node boundaries; outcome_path is written-then-read with crash edge cases handled |
-| Security | gVisor isolation, egress allowlist via proxy, no git or long-lived creds in sandbox |
-| Error handling | Three categories: transient retry, agent-declared block, timeout |
+| Security | gVisor isolation, egress allowlist via proxy, credentials injected via PUT /auth (never in env vars or files inside sandbox), no git in sandbox, no long-lived creds in sandbox (ADR-0005) |
+| Error handling | Three categories: transient retry (LangGraph), agent-declared block, timeout. Container always destroyed on failure |
 | Observability | Structured stdout (operational), Langfuse (traces + evals) |
-| Configuration | Environment variables via .env + python-dotenv |
-| Build/CI/CD | Docker Compose manages all services; pre-commit via ruff + pytest |
-| Deployment model | Docker Compose: orchestrator, Redmine, Langfuse, egress proxy, SQLite |
-| Test strategy | Node tests (mocked deps) → pipeline tests (fake opencode) → E2E tests (real everything) |
+| Configuration | Environment variables via .env + python-dotenv for orchestrator. Per-dispatch opencode.json for agent sandbox |
+| Build/CI/CD | Docker Compose manages all services; one sandbox image with MCP deps baked in; pre-commit via ruff + pytest |
+| Deployment model | Docker Compose: orchestrator, Redmine, Langfuse, egress proxy, SQLite, one sandbox image |
+| Test strategy | Node tests (mock dispatch) → platform tests (VCR-recorded opencode HTTP) → E2E tests (real everything) |
 | Repository structure | Single repo for platform + workflows + infra; target projects external |
 
 ## Open Risks
 
 - **gVisor compatibility with opencode** — opencode's tool loop (bash, file writes, LSP) may hit syscall gaps. Smoke test before committing. Fallback: hardened plain Docker.
 - **Redmine status-to-state mapping** — Redmine default statuses (New, In Progress, Resolved, Closed, Rejected) don't cleanly map to our 11 ticket states. May need custom Redmine statuses.
-- **opencode serve API stability** — The HTTP API is relatively new. Contract shape may change. Version-pin the opencode image.
+- **opencode /session API stability** — The `/session/*` and `PUT /auth/:id` endpoints are newer than the `/api/*` surface. Contract shape may change. Version-pin the opencode npm package in the sandbox image.
+- **opencode message endpoint blocking** — Assumes `POST /session/{id}/message` blocks until the agent turn is complete (tool loop handled server-side). If it returns after a single response, a polling fallback via `GET /session/{id}` is needed.
 - **Langfuse self-host complexity** — Needs to be verified as Docker Compose-able with minimal config.
 - **Skill git steps in sandbox** — TDD/revision skills run `git add`/`git commit`. If git is blocked (AC-23) but still partially installed, edge cases may surface (git hangs vs clean error).
 - **Feature-level AC tracking** — ACs are per-feature but tickets are per-Redmine-item. How ACs flow from feature-level state into individual ticket contracts needs refinement during implementation.
 - **Outcome_path convention** — Skills are instructed to write to `outcome_path`. If a skill doesn't respect this (e.g., writes somewhere else), the orchestrator gets no output. Mitigated by prompt instructions and verified in pipeline tests.
+- **auth.set provider recognition** — `PUT /auth/:id` requires the provider to be defined in `opencode.json` for opencode to accept the key. Provider ID in the URL must match the provider key in the config.
