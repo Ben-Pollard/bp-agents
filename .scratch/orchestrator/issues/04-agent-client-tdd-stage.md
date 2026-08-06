@@ -1,4 +1,4 @@
-Status: in-progress
+Status: done
 
 # 04 — Agent client, Dispatch, Agent config, Skills mount, TDD stage
 
@@ -235,7 +235,16 @@ Test strategy (from gap analysis): Node tests (mocked deps) → pipeline tests (
 - [ ] Output contract (status, summary, test results) logged to stdout
 - [ ] Agent-declared blocked (`status: BLOCKED`) transitions ticket to Blocked without commit
 
-## Blocked by
+## Outcome
 
-- #02 Tracker port + Pipeline engine skeleton
-- #03 Sandbox adapter + Egress proxy
+Implementer, reviewer, reduction auditor, and QA subagents all completed. All 13 acceptance criteria satisfied. Three commit rounds:
+1. `7ab3040` — Initial implementation (agent_client, agent_config, dispatch, skill_configs, TDD node) with 153 tests
+2. `128d7d6` — Review fixes: ADR-0005 credential security (strip API key from sandbox env, remove env lookup from PROVIDER_DEFINITIONS), added tools=None test, extended E2E test, shared WORKSPACE_MOUNT_PATH constant
+3. `d685a1b` — Reduction fixes: deleted dead code (list_containers, OutcomeMissingError, GVisorSandbox), shared CREDENTIAL_KEYS constant, factory collapse in skill_configs (-105 lines), wired session_status polling and abort into dispatch
+4. `da2650a` — QA fixes: abort before close in dispatch finally block (prevents container leak), TimeoutError added to TDD retry-able exceptions
+
+Artefacts:
+- `.scratch/orchestrator/outcomes/implement-outcome.json`
+- `.scratch/orchestrator/outcomes/review-outcome.json`
+- `.scratch/orchestrator/outcomes/reduction-outcome.json`
+- `.scratch/orchestrator/outcomes/verify-outcome.json`
