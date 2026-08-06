@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import MagicMock
 
 import pytest
@@ -587,6 +588,136 @@ class TestDockerSandbox:
     ) -> None:
         sandbox = DockerSandbox(docker_client=mock_docker_client)
         sandbox.egress_policy.check("https://api.openai.com/v1/chat")  # no error
+
+    async def test_create_does_not_block_event_loop(
+        self,
+        sandbox_config: SandboxConfig,
+        mock_docker_client: MagicMock,
+        sandbox: DockerSandbox,
+    ) -> None:
+        """Docker-py synchronous calls SHALL NOT block the asyncio event loop.
+
+        Before the fix, synchronous docker-py calls (create, start, reload)
+        blocked the event loop, preventing health checks, credential injection,
+        and message dispatch from running concurrently.
+        """
+        execution: list[str] = []
+
+        def slow_create(**kwargs: object) -> MagicMock:
+            import time
+
+            time.sleep(0.3)
+            fake = MagicMock()
+            fake.id = "c1"
+            fake.attrs = {
+                "NetworkSettings": {"Networks": {"bridge": {"IPAddress": "172.17.0.2"}}}
+            }
+            execution.append("docker_create")
+            return fake
+
+        async def quick_task() -> None:
+            await asyncio.sleep(0.05)
+            execution.append("quick_done")
+
+        mock_docker_client.containers.create = slow_create
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(sandbox.create(sandbox_config))
+            tg.create_task(quick_task())
+
+        assert execution == ["quick_done", "docker_create"], (
+            f"Expected 'quick_done' before 'docker_create', got {execution}. "
+            "Docker calls blocked the event loop."
+        )
+
+    async def test_is_running_does_not_block_event_loop(
+        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
+    ) -> None:
+        """DockerSandbox.is_running SHALL NOT block the event loop."""
+        execution: list[str] = []
+
+        def slow_get(container_id: str) -> MagicMock:
+            import time
+
+            time.sleep(0.3)
+            fake = MagicMock()
+            fake.status = "running"
+            execution.append("docker_get")
+            return fake
+
+        async def quick_task() -> None:
+            await asyncio.sleep(0.05)
+            execution.append("quick_done")
+
+        mock_docker_client.containers.get = slow_get
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(sandbox.is_running("c1"))
+            tg.create_task(quick_task())
+
+        assert execution == ["quick_done", "docker_get"], (
+            f"Expected 'quick_done' before 'docker_get', got {execution}. "
+            "Docker calls blocked the event loop."
+        )
+
+    async def test_destroy_does_not_block_event_loop(
+        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
+    ) -> None:
+        """DockerSandbox.destroy SHALL NOT block the event loop."""
+        execution: list[str] = []
+
+        def slow_get(container_id: str) -> MagicMock:
+            import time
+
+            time.sleep(0.3)
+            fake = MagicMock()
+            execution.append("docker_get")
+            return fake
+
+        async def quick_task() -> None:
+            await asyncio.sleep(0.05)
+            execution.append("quick_done")
+
+        mock_docker_client.containers.get = slow_get
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(sandbox.destroy("c1"))
+            tg.create_task(quick_task())
+
+        assert execution == ["quick_done", "docker_get"], (
+            f"Expected 'quick_done' before 'docker_get', got {execution}. "
+            "Docker calls blocked the event loop."
+        )
+
+    async def test_exec_run_does_not_block_event_loop(
+        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
+    ) -> None:
+        """DockerSandbox.exec_run SHALL NOT block the event loop."""
+        execution: list[str] = []
+
+        def slow_get(container_id: str) -> MagicMock:
+            import time
+
+            time.sleep(0.3)
+            fake = MagicMock()
+            fake.exec_run.return_value = (0, b"ok")
+            execution.append("docker_get")
+            return fake
+
+        async def quick_task() -> None:
+            await asyncio.sleep(0.05)
+            execution.append("quick_done")
+
+        mock_docker_client.containers.get = slow_get
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(sandbox.exec_run("c1", "echo hi"))
+            tg.create_task(quick_task())
+
+        assert execution == ["quick_done", "docker_get"], (
+            f"Expected 'quick_done' before 'docker_get', got {execution}. "
+            "Docker calls blocked the event loop."
+        )
 
     def test_e2e_python_one_liner_is_valid_syntax(self) -> None:
         """The E2E test for blocked internet (AC-22) uses a single-line

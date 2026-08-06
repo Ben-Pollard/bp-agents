@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -39,7 +40,7 @@ class DockerSandbox(Sandbox):
         env = self._build_env(config)
         labels = self._build_labels(config)
         container = await self._create_and_start_container(config, env, labels)
-        container.reload()
+        await asyncio.to_thread(container.reload)
         network_name = config.network if config.network else "bridge"
         container_ip = (
             container.attrs.get("NetworkSettings", {})
@@ -110,7 +111,9 @@ class DockerSandbox(Sandbox):
             create_kwargs["dns"] = config.dns_servers
 
         try:
-            container: Container = self._client.containers.create(**create_kwargs)
+            container: Container = await asyncio.to_thread(
+                self._client.containers.create, **create_kwargs
+            )
         except docker.errors.DockerException:
             if config.runtime == "runsc":
                 logger.error(
@@ -118,7 +121,7 @@ class DockerSandbox(Sandbox):
                 )
                 raise
             raise
-        container.start()
+        await asyncio.to_thread(container.start)
         return container
 
     @staticmethod
@@ -138,20 +141,24 @@ class DockerSandbox(Sandbox):
 
     async def is_running(self, container_id: str) -> bool:
         try:
-            container = self._client.containers.get(container_id)
-            container.reload()
+            container = await asyncio.to_thread(
+                self._client.containers.get, container_id
+            )
+            await asyncio.to_thread(container.reload)
             return container.status == "running"
         except docker.errors.NotFound:
             return False
 
     async def destroy(self, container_id: str) -> None:
         try:
-            container = self._client.containers.get(container_id)
-            container.remove(force=True, v=True)
+            container = await asyncio.to_thread(
+                self._client.containers.get, container_id
+            )
+            await asyncio.to_thread(container.remove, force=True, v=True)
         except docker.errors.NotFound:
             pass
 
     async def exec_run(self, container_id: str, cmd: str) -> tuple[int, bytes]:
-        container = self._client.containers.get(container_id)
-        result = container.exec_run(cmd)
+        container = await asyncio.to_thread(self._client.containers.get, container_id)
+        result = await asyncio.to_thread(container.exec_run, cmd)
         return result  # type: ignore[return-value]
