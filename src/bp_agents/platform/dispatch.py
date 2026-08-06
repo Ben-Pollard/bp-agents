@@ -10,13 +10,20 @@ from bp_agents.platform.agent_config import AgentConfig, to_opencode_json
 from bp_agents.platform.sandbox.base import Sandbox
 from bp_agents.platform.sandbox.config import SandboxConfig
 
+_CREDENTIAL_KEYS = {
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENROUTER_API_KEY",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+}
+
 logger = logging.getLogger(__name__)
 
 PROVIDER_DEFINITIONS: dict = {
     "openrouter": {
         "name": "OpenRouter",
         "api": "https://openrouter.ai/api/v1",
-        "options": {"apiKey": "{env:OPENROUTER_API_KEY}"},
         "models": {
             "deepseek/deepseek-v4-flash": {
                 "name": "DeepSeek V4 Flash",
@@ -85,7 +92,9 @@ async def dispatch(
         runtime=sandbox_config.runtime,
         workspace_mode="rw",
         env={
-            **sandbox_config.env,
+            **{
+                k: v for k, v in sandbox_config.env.items() if k not in _CREDENTIAL_KEYS
+            },
             "outcome_path": outcome_path,
         },
         timeout_seconds=sandbox_config.timeout_seconds,

@@ -11,6 +11,7 @@ import httpx
 from bp_agents.platform.agent_client import OpenCodeClient
 from bp_agents.platform.dispatch import OUTCOME_FILENAME, dispatch
 from bp_agents.platform.sandbox import Sandbox, SandboxConfig
+from bp_agents.platform.sandbox.config import WORKSPACE_MOUNT_PATH
 from bp_agents.workflows.sdd.contracts import TddOutput
 from bp_agents.workflows.sdd.skill_configs import SKILL_CONFIGS
 from bp_agents.workflows.sdd.state import TicketPipelineState
@@ -101,7 +102,7 @@ class TddNode:
 
         agent_config = SKILL_CONFIGS[_TDD_SKILL]
         outcome_host_path = os.path.join(self._target_repo_path, OUTCOME_FILENAME)
-        sandbox_outcome_path = "/data/workspace/" + OUTCOME_FILENAME
+        sandbox_outcome_path = WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME
 
         api_key = self._sandbox_config.env.get("OPENROUTER_API_KEY", "")
 

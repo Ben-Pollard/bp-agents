@@ -5,7 +5,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from bp_agents.platform.sandbox import Sandbox
-from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
+from bp_agents.platform.sandbox.config import (
+    WORKSPACE_MOUNT_PATH,
+    SandboxConfig,
+    SandboxSession,
+)
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
 from bp_agents.platform.sandbox.egress import (
     DEFAULT_ALLOWLIST,
@@ -430,7 +434,7 @@ class TestDockerSandbox:
         assert call_kwargs["mem_limit"] == "256m"
         assert call_kwargs["nano_cpus"] == int(1 * 1e9)
         volumes = call_kwargs["volumes"]
-        assert volumes["/tmp/workspace"] == {"bind": "/data/workspace", "mode": "ro"}
+        assert volumes["/tmp/workspace"] == {"bind": WORKSPACE_MOUNT_PATH, "mode": "ro"}
         assert volumes["/tmp/skills"] == {"bind": "/data/skills", "mode": "ro"}
 
     async def test_create_uses_writable_workspace_mode_when_configured(
@@ -447,7 +451,7 @@ class TestDockerSandbox:
         await sandbox.create(sandbox_config)
 
         volumes = mock_docker_client.containers.create.call_args[1]["volumes"]
-        assert volumes["/tmp/workspace"] == {"bind": "/data/workspace", "mode": "rw"}
+        assert volumes["/tmp/workspace"] == {"bind": WORKSPACE_MOUNT_PATH, "mode": "rw"}
 
     async def test_create_sets_labels(
         self,

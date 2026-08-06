@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -53,9 +55,47 @@ async def test_send_message_posts_to_session_message(
     assert result["state"] == "completed"
 
 
-async def test_send_message_includes_model_and_tools(
-    client: OpenCodeClient,
-) -> None:
+async def test_send_message_without_tools_omits_tools_in_body() -> None:
+    sent_body = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal sent_body
+        if request.url.path == "/session/sess-1/message" and request.method == "POST":
+            sent_body = json.loads(request.read())
+            return httpx.Response(200, json={"state": "completed"})
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    client = OpenCodeClient(
+        "http://localhost:8080",
+        client=httpx.AsyncClient(base_url="http://localhost:8080", transport=transport),
+    )
+    session = Session(session_id="sess-1")
+    result = await client.send_message(
+        session,
+        parts=[{"type": "text", "text": "hi"}],
+        model=("openrouter", "deepseek/deepseek-v4-flash"),
+    )
+    assert sent_body is not None
+    assert "tools" not in sent_body
+    assert result["state"] == "completed"
+
+
+async def test_send_message_includes_tools_when_provided() -> None:
+    sent_body = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal sent_body
+        if request.url.path == "/session/sess-1/message" and request.method == "POST":
+            sent_body = json.loads(request.read())
+            return httpx.Response(200, json={"state": "completed"})
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    client = OpenCodeClient(
+        "http://localhost:8080",
+        client=httpx.AsyncClient(base_url="http://localhost:8080", transport=transport),
+    )
     session = Session(session_id="sess-1")
     result = await client.send_message(
         session,
@@ -63,6 +103,8 @@ async def test_send_message_includes_model_and_tools(
         model=("openrouter", "deepseek/deepseek-v4-flash"),
         tools={"bash": True, "read": True, "task": False},
     )
+    assert sent_body is not None
+    assert sent_body["tools"] == {"bash": True, "read": True, "task": False}
     assert result["state"] == "completed"
 
 

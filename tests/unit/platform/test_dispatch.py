@@ -12,7 +12,11 @@ from bp_agents.platform.dispatch import (
     PROVIDER_DEFINITIONS,
     dispatch,
 )
-from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
+from bp_agents.platform.sandbox.config import (
+    WORKSPACE_MOUNT_PATH,
+    SandboxConfig,
+    SandboxSession,
+)
 
 
 def _agent_config() -> AgentConfig:
@@ -83,7 +87,7 @@ async def test_dispatch_writes_opencode_json(
             skill="tdd",
             prompt="Do the thing",
             workspace=workspace,
-            outcome_path="/data/workspace/" + OUTCOME_FILENAME,
+            outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
             api_key="sk-test-key",
         )
 
@@ -127,7 +131,7 @@ async def test_dispatch_destroys_container_on_failure(
                 skill="tdd",
                 prompt="Do the thing",
                 workspace=workspace,
-                outcome_path="/data/workspace/" + OUTCOME_FILENAME,
+                outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
                 api_key="sk-test-key",
             )
 
@@ -148,7 +152,7 @@ async def test_dispatch_unhealthy_container_raises(
                 skill="tdd",
                 prompt="Do the thing",
                 workspace=workspace,
-                outcome_path="/data/workspace/" + OUTCOME_FILENAME,
+                outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
                 api_key="sk-test-key",
             )
 
@@ -186,7 +190,7 @@ async def test_dispatch_injects_credentials(
             skill="tdd",
             prompt="Do the thing",
             workspace=workspace,
-            outcome_path="/data/workspace/" + OUTCOME_FILENAME,
+            outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
             api_key="sk-test-key",
         )
 
@@ -232,7 +236,7 @@ async def test_send_message_called_with_correct_model_and_tools(
             skill="tdd",
             prompt="Do the thing",
             workspace=workspace,
-            outcome_path="/data/workspace/" + OUTCOME_FILENAME,
+            outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
             api_key="sk-test-key",
         )
 
@@ -245,3 +249,53 @@ async def test_send_message_called_with_correct_model_and_tools(
     assert session_arg.session_id == "sess-1"
     assert parts_arg == [{"type": "text", "text": "Do the thing"}]
     assert model_arg == ("openrouter", "deepseek/deepseek-v4-flash")
+
+
+async def test_dispatch_strips_credentials_from_sandbox_env(
+    mock_sandbox: MagicMock, workspace: str
+) -> None:
+    outcome_data = {
+        "status": "DONE",
+        "summary": "Works",
+        "test_results": {"passed": 1, "failed": 0, "skipped": 0},
+        "concerns": [],
+    }
+    with open(os.path.join(workspace, OUTCOME_FILENAME), "w") as f:
+        json.dump(outcome_data, f)
+
+    oc_client = MagicMock()
+    oc_client.auth_set = AsyncMock(return_value=True)
+    oc_client.create_session = AsyncMock(return_value=MagicMock(session_id="sess-1"))
+    oc_client.send_message = AsyncMock(return_value={"state": "completed"})
+    oc_client.close = AsyncMock()
+
+    cfg = _sandbox_config()
+    cfg.env = {
+        "OPENROUTER_API_KEY": "sk-real-key",
+        "OPENAI_API_KEY": "sk-other-key",
+        "FOO": "bar",
+    }
+
+    with (
+        patch("bp_agents.platform.dispatch.OpenCodeClient", return_value=oc_client),
+        patch(
+            "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
+        ),
+    ):
+        await dispatch(
+            sandbox=mock_sandbox,
+            sandbox_config=cfg,
+            config=_agent_config(),
+            skill="tdd",
+            prompt="Do the thing",
+            workspace=workspace,
+            outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
+            api_key="sk-test-key",
+        )
+
+    create_call = mock_sandbox.create.call_args
+    assert create_call is not None
+    passed_cfg = create_call[0][0]
+    assert "OPENROUTER_API_KEY" not in passed_cfg.env
+    assert "OPENAI_API_KEY" not in passed_cfg.env
+    assert passed_cfg.env["FOO"] == "bar"

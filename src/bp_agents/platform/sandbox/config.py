@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 
+WORKSPACE_MOUNT_PATH = "/data/workspace"
+
 
 @dataclass
 class SandboxConfig:

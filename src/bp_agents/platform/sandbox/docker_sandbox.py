@@ -5,7 +5,11 @@ import docker
 from docker.models.containers import Container
 
 from bp_agents.platform.sandbox.base import Sandbox
-from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
+from bp_agents.platform.sandbox.config import (
+    WORKSPACE_MOUNT_PATH,
+    SandboxConfig,
+    SandboxSession,
+)
 from bp_agents.platform.sandbox.egress import EgressPolicy
 
 logger = logging.getLogger(__name__)
@@ -89,7 +93,7 @@ class DockerSandbox(Sandbox):
             nano_cpus=int(config.cpu_count * 1e9),
             volumes={
                 config.workspace_path: {
-                    "bind": "/data/workspace",
+                    "bind": WORKSPACE_MOUNT_PATH,
                     "mode": config.workspace_mode,
                 },
                 config.skills_path: {"bind": "/data/skills", "mode": "ro"},
