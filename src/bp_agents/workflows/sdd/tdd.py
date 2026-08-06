@@ -123,6 +123,7 @@ class TddNode:
                 httpx.ConnectError,
                 httpx.RemoteProtocolError,
                 httpx.HTTPStatusError,
+                httpx.TimeoutException,
                 TimeoutError,
             ) as exc:
                 if attempt < self._max_retries:

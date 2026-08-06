@@ -251,4 +251,26 @@ The fake server SHALL exercise the full dispatch lifecycle so the blocking-messa
 
 ## Outcome
 
-QA subagent incorrectly returned PASS — live opencode session never completes within 600s polling timeout. `POST /session/{id}/message` returns immediately without driving the agent tool-call loop, so `_wait_for_session_completion` polls a session that is running but orphaned. Ticket reopened with improved testing requirements (pipeline tests with fake opencode, E2E tests that verify full dispatch cycle).
+### Round 1 — QA FAIL
+Live opencode session never completes within 600s polling timeout. `POST /session/{id}/message` returns immediately without driving the agent tool-call loop, so `_wait_for_session_completion` polls a session that is running but orphaned. Ticket reopened with improved testing requirements (pipeline tests with fake opencode, E2E tests that verify full dispatch cycle).
+
+**Fix applied (commit e2899a2):** `send_message` now polls `GET /session/{id}` until state transitions from 'running'. Removed redundant `_wait_for_session_completion` from `dispatch.py`. Added integration tests. E2E test updated to validate full completion lifecycle.
+
+### Round 2 — QA FAIL
+Egress proxy blocks `models.opencode.ai` (not in allowlist). Skills bind-mount broken. Abort-after-timeout crash.
+
+**Fix applied (commit b6d9f11):** Added `models.opencode.ai` to egress allowlists. Resolved skills bind mount path to absolute. Hardened abort-after-timeout with explicit closed-client error handling.
+
+### Round 3 — QA FAIL (escalation)
+Egress proxy blocks `openrouter.ai` (allowlist had `api.openrouter.ai` subdomain, not base domain). Skills bind-mount still broken. Remaining issues cross-ticket: orphaned sandbox containers, 11 stuck tickets, `.git` in workspace.
+
+**Fix applied (commit b8ed921):** Added `openrouter.ai` to egress allowlists. Fixed skills path resolution to use CWD-relative `os.path.abspath`.
+
+### Escalation
+Three QA rounds completed. All 157 tests pass (unit + integration). In-scope code fixes applied across 3 commit rounds. Remaining blockers are cross-ticket infra/ops issues: egress proxy host resolution, crash recovery on startup, `.git` in sandbox workspace. Per skill escalation rules, review loop exceeded 3 rounds.
+
+**Outcome artefacts:**
+- `.scratch/orchestrator/outcomes/implement-outcome.json`
+- `.scratch/orchestrator/outcomes/review-outcome.json`
+- `.scratch/orchestrator/outcomes/reduction-outcome.json`
+- `.scratch/orchestrator/outcomes/verify-outcome.json`

@@ -533,3 +533,45 @@ class TestTddNode:
         assert any(
             "blocked, reason: sandbox unreachable" in m for m in messages
         ), "ConnectError must log 'blocked, reason: sandbox unreachable' (AC-11)"
+
+    async def test_read_timeout_retries_then_blocked(
+        self,
+        target_repo: Path,
+        skills_dir: Path,
+        mock_sandbox: MagicMock,
+        sandbox_config: SandboxConfig,
+        tracker: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import logging
+
+        node = TddNode(
+            sandbox=mock_sandbox,
+            sandbox_config=sandbox_config,
+            target_repo_path=str(target_repo),
+            skills_path=str(skills_dir),
+            tracker=tracker,
+            max_retries=2,
+        )
+
+        caplog.set_level(logging.WARNING)
+
+        mock_req = MagicMock()
+        with patch(
+            "bp_agents.workflows.sdd.tdd.dispatch",
+            AsyncMock(
+                side_effect=httpx.ReadTimeout(
+                    "POST /session/sess-1/message timed out",
+                    request=mock_req,
+                )
+            ),
+        ):
+            result = await node(_make_state())
+
+        assert "status" not in result
+        assert "sandbox unreachable" in result["blocked_reason"]
+
+        retry_messages = [r.message for r in caplog.records if "retrying" in r.message]
+        assert (
+            len(retry_messages) == 1
+        ), f"Expected 1 retry log message, got {len(retry_messages)}"
