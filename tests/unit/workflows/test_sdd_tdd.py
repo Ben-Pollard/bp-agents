@@ -292,7 +292,10 @@ class TestTddNode:
         mock_sandbox: MagicMock,
         sandbox_config: SandboxConfig,
         tracker: MagicMock,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
+        import logging
+
         node = TddNode(
             sandbox=mock_sandbox,
             sandbox_config=sandbox_config,
@@ -300,6 +303,8 @@ class TestTddNode:
             skills_path=str(skills_dir),
             tracker=tracker,
         )
+
+        caplog.set_level(logging.INFO)
 
         with patch(
             "bp_agents.workflows.sdd.tdd.dispatch",
@@ -309,6 +314,11 @@ class TestTddNode:
 
         assert "status" not in result
         assert "no outcome file" in result.get("blocked_reason", "").lower()
+
+        messages = [r.message for r in caplog.records]
+        assert any(
+            "blocked, reason:" in m for m in messages
+        ), "FileNotFoundError must log 'blocked, reason:' (AC-11)"
 
     async def test_tdd_cleans_artifacts_before_commit(
         self,

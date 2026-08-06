@@ -145,6 +145,10 @@ class TddNode:
                     "blocked_reason": f"sandbox unreachable: {exc}",
                 }
             except FileNotFoundError:
+                logger.info(
+                    "ticket %s: blocked, reason: agent: no outcome file written by agent",
+                    ticket_id,
+                )
                 return {
                     "blocked_reason": "agent: no outcome file written by agent",
                 }

@@ -1,4 +1,4 @@
-Status: in-progress
+Status: done
 
 # 04 — Agent client, Dispatch, Agent config, Skills mount, TDD stage
 
