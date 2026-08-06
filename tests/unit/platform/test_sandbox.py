@@ -81,6 +81,7 @@ class TestEgressPolicy:
         assert policy.is_allowed("https://api.openai.com/v1/chat")
         assert policy.is_allowed("https://api.anthropic.com/v1/messages")
         assert policy.is_allowed("https://api.openrouter.ai/chat")
+        assert policy.is_allowed("https://models.opencode.ai/")
 
     def test_default_allowlist_includes_package_registries(self) -> None:
         policy = EgressPolicy()

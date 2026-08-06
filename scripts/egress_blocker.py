@@ -7,6 +7,7 @@ DEFAULT_ALLOWLIST = [
     "api.openai.com",
     "api.anthropic.com",
     "api.openrouter.ai",
+    "models.opencode.ai",
     "pypi.org",
     "files.pythonhosted.org",
     "pypi.python.org",

@@ -8,6 +8,7 @@ DEFAULT_ALLOWLIST: list[str] = [
     "api.openai.com",
     "api.anthropic.com",
     "api.openrouter.ai",
+    "models.opencode.ai",
     # Package registries
     "pypi.org",
     "files.pythonhosted.org",

@@ -145,6 +145,8 @@ async def dispatch(
         if oc_session is not None:
             try:
                 await client.abort(oc_session)
+            except (httpx.ClosedResourceError, httpx.ConnectError, RuntimeError):
+                logger.warning("abort failed during cleanup (client may be closed)")
             except Exception:
                 logger.exception("abort failed during cleanup")
         if own_client:
