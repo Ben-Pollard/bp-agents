@@ -6,6 +6,7 @@ from mitmproxy import http
 DEFAULT_ALLOWLIST = [
     "api.openai.com",
     "api.anthropic.com",
+    "openrouter.ai",
     "api.openrouter.ai",
     "models.opencode.ai",
     "pypi.org",

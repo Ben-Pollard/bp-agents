@@ -7,6 +7,7 @@ DEFAULT_ALLOWLIST: list[str] = [
     # LLM API endpoints
     "api.openai.com",
     "api.anthropic.com",
+    "openrouter.ai",
     "api.openrouter.ai",
     "models.opencode.ai",
     # Package registries

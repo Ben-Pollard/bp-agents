@@ -108,8 +108,8 @@ async def main_async(
 
     target_repo_path = target_repo_path or TARGET_REPO_PATH
     skills_path = skills_path or SKILLS_PATH
-    if target_repo_path and not os.path.isabs(skills_path):
-        skills_path = os.path.abspath(os.path.join(target_repo_path, skills_path))
+    if not os.path.isabs(skills_path):
+        skills_path = os.path.abspath(skills_path)
 
     sandbox = None
     sandbox_config = None
