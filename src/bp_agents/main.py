@@ -11,7 +11,7 @@ from bp_agents.platform.mcp.contract_broker import (
     create_mcp_server,
 )
 from bp_agents.platform.observability.otel_receiver import OtelReceiver
-from bp_agents.platform.runner import GraphRunner, wait_for_dependency
+from bp_agents.platform.runner import GraphRunner, setup_logging, wait_for_dependency
 from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
 from bp_agents.platform.sandbox.egress import EgressPolicy
@@ -50,6 +50,7 @@ def _build_sdd_state(ticket: dict) -> tuple[dict, str]:
 
 
 async def main() -> None:
+    setup_logging()
     logger.info("sdd orchestrator starting")
 
     egress_policy = EgressPolicy()

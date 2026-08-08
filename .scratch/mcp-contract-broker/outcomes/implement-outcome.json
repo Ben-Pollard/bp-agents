@@ -1,4 +1,4 @@
 {
   "status": "DONE",
-  "summary": "Fixed 2 issues from QA: (1) Changed LOG_LEVEL to BP_LOG_LEVEL in docker-compose.yml orchestrator service so BP_LOG_LEVEL=debug from .env is actually forwarded to the container. (2) Added 9 integration tests under tests/integration/test_otel_pipeline.py covering configurable port start, POST /v1/traces acceptance, debug-level logging of all span types, info-level filtering to session events only, invalid-payload best-effort handling, empty body handling, start/stop idempotency, 404 on wrong path, and env-var wiring verification. All 202 tests pass, ruff lint clean."
+  "summary": "Fixed setup_logging() to forcefully clear and reconfigure root logger (handlers + level) so it works after uvicorn/FastMCP pre-configures logging. Moved setup_logging() call to top of main() before TaskGroup. Added 3 unit tests proving override works with pre-existing handlers, default level, and format application."
 }

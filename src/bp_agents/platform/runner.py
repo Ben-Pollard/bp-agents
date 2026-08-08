@@ -22,7 +22,12 @@ def setup_logging() -> None:
     log_level = getattr(
         logging, os.getenv("BP_LOG_LEVEL", "INFO").upper(), logging.INFO
     )
-    logging.basicConfig(level=log_level, format="%(asctime)s %(levelname)s %(message)s")
+    root = logging.getLogger()
+    root.setLevel(log_level)
+    root.handlers.clear()
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    root.addHandler(handler)
 
 
 def wait_for_dependency(url: str, name: str, timeout: int = 120) -> None:
