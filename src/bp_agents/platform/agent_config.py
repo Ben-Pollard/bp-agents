@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -10,7 +11,15 @@ class AgentConfig:
     mcps: dict[str, bool]
 
 
-def to_opencode_json(config: AgentConfig, provider_defs: dict, mcp_defs: dict) -> dict:
+_SANDBOX_SKILLS_MOUNT = "/data/skills"
+
+
+def to_opencode_json(
+    config: AgentConfig,
+    provider_defs: dict,
+    mcp_defs: dict,
+    skills_path: str = "",
+) -> dict:
     result: dict = {
         "$schema": "https://opencode.ai/config.json",
         "provider": provider_defs,
@@ -22,4 +31,6 @@ def to_opencode_json(config: AgentConfig, provider_defs: dict, mcp_defs: dict) -
             merged = dict(mcp_defs[mcp_name])
             merged["enabled"] = True
             result["mcp"][mcp_name] = merged
+    if skills_path and Path(skills_path).is_dir():
+        result["skills"] = [_SANDBOX_SKILLS_MOUNT]
     return result

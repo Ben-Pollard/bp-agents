@@ -1,4 +1,10 @@
-from bp_agents.platform.agent_config import AgentConfig, to_opencode_json
+from pathlib import Path
+
+from bp_agents.platform.agent_config import (
+    _SANDBOX_SKILLS_MOUNT,
+    AgentConfig,
+    to_opencode_json,
+)
 
 
 def _config(**overrides) -> AgentConfig:
@@ -69,3 +75,25 @@ def test_to_opencode_json_mcp_disabled_is_omitted() -> None:
     }
     result = to_opencode_json(config, {}, mcp_defs)
     assert "playwright" not in result["mcp"]
+
+
+def test_to_opencode_json_skills_path_adds_skills_array() -> None:
+    import tempfile
+
+    skills_path = tempfile.mkdtemp()
+    (Path(skills_path) / "tdd" / "SKILL.md").parent.mkdir(parents=True, exist_ok=True)
+    (Path(skills_path) / "tdd" / "SKILL.md").write_text("# TDD skill")
+
+    result = to_opencode_json(_config(), {}, {}, skills_path=skills_path)
+    assert "skills" in result
+    assert result["skills"] == [_SANDBOX_SKILLS_MOUNT]
+
+
+def test_to_opencode_json_empty_skills_path_omits_skills() -> None:
+    result = to_opencode_json(_config(), {}, {}, skills_path="")
+    assert "skills" not in result
+
+
+def test_to_opencode_json_nonexistent_skills_path_omits_skills() -> None:
+    result = to_opencode_json(_config(), {}, {}, skills_path="/nonexistent/path")
+    assert "skills" not in result

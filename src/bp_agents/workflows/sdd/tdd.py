@@ -60,6 +60,11 @@ def build_input_contract(
     }
 
 
+def input_contract_to_prompt(contract: dict, outcome_path: str) -> str:
+    body = contract["payload"]["ticket"]["body"]
+    return f"/{contract['payload']['skill']} {body}\n\noutcome_path: {outcome_path}"
+
+
 class TddNode:
     def __init__(
         self,
@@ -106,6 +111,8 @@ class TddNode:
 
         api_key = self._sandbox_config.env.get("OPENROUTER_API_KEY", "")
 
+        prompt = input_contract_to_prompt(input_contract, sandbox_outcome_path)
+
         for attempt in range(1, self._max_retries + 1):
             try:
                 outcome = await dispatch(
@@ -113,7 +120,7 @@ class TddNode:
                     sandbox_config=self._sandbox_config,
                     config=agent_config,
                     skill=_TDD_SKILL,
-                    prompt=json.dumps(input_contract),
+                    prompt=prompt,
                     workspace=self._target_repo_path,
                     outcome_path=sandbox_outcome_path,
                     api_key=api_key,

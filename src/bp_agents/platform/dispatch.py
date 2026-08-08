@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+from pathlib import Path
 
 import httpx
 
@@ -50,9 +51,26 @@ async def _wait_for_health(
                 if resp.status_code == 200:
                     data = resp.json()
                     if data.get("healthy") is True:
+                        logger.debug(
+                            "health check passed attempt=%d/%d",
+                            attempt + 1,
+                            max_retries,
+                        )
                         return True
-            except (httpx.ConnectError, httpx.TimeoutException):
-                pass
+                logger.debug(
+                    "health check attempt=%d/%d status=%d body=%s",
+                    attempt + 1,
+                    max_retries,
+                    resp.status_code,
+                    resp.text[:500],
+                )
+            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                logger.debug(
+                    "health check attempt=%d/%d %s",
+                    attempt + 1,
+                    max_retries,
+                    exc,
+                )
             await asyncio.sleep(HEALTH_CHECK_INTERVAL)
     return False
 
@@ -80,10 +98,33 @@ async def dispatch(
     8. Destroy container
     Returns validated outcome dict. Raises on failure — container always destroyed.
     """
-    opencode_config = to_opencode_json(config, PROVIDER_DEFINITIONS, MCP_DEFS)
+    if not api_key:
+        raise RuntimeError(
+            f"dispatch: {config.provider} api_key is empty — set {config.provider.upper()}_API_KEY in environment"
+        )
+
+    skills_path = sandbox_config.skills_path
+    if not skills_path or not Path(skills_path).is_dir():
+        raise RuntimeError(
+            f"dispatch: skills_path {skills_path!r} is not a directory — "
+            f"skills must be mounted before dispatch"
+        )
+    skill_dirs = list(Path(skills_path).iterdir())
+    has_skill_md = any((p / "SKILL.md").is_file() for p in skill_dirs if p.is_dir())
+    if not has_skill_md:
+        raise RuntimeError(
+            f"dispatch: no SKILL.md found under {skills_path} — "
+            f"skill directories must contain a SKILL.md file. "
+            f"contents: {[p.name for p in skill_dirs]}"
+        )
+
+    opencode_config = to_opencode_json(
+        config, PROVIDER_DEFINITIONS, MCP_DEFS, skills_path=skills_path
+    )
     opencode_path = os.path.join(workspace, "opencode.json")
     with open(opencode_path, "w") as f:
         json.dump(opencode_config, f, indent=2)
+    logger.debug("wrote %s config=%s", opencode_path, json.dumps(opencode_config))
 
     cfg = SandboxConfig(
         image=sandbox_config.image,
@@ -135,10 +176,18 @@ async def dispatch(
         )
 
         outcome_host_path = os.path.join(workspace, OUTCOME_FILENAME)
+        logger.debug("looking for outcome at %s", outcome_host_path)
         if not os.path.exists(outcome_host_path):
+            logger.debug(
+                "outcome file NOT FOUND at %s (cwd=%s dir=%s)",
+                outcome_host_path,
+                os.getcwd(),
+                os.listdir(workspace) if os.path.isdir(workspace) else "not-a-dir",
+            )
             raise FileNotFoundError(f"Outcome file not found at {outcome_host_path}")
         with open(outcome_host_path) as f:
             outcome = json.load(f)
+            logger.debug("read outcome: %s", json.dumps(outcome))
 
         return outcome
     finally:

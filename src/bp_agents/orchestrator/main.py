@@ -85,10 +85,11 @@ async def main_async(
     target_repo_path: str | None = None,
     skills_path: str | None = None,
 ) -> None:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    log_level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+    logging.basicConfig(level=log_level, format="%(asctime)s %(levelname)s %(message)s")
+    logger.info(
+        "orchestrator starting...  log_level=%s", logging.getLevelName(log_level)
     )
-    logger.info("orchestrator starting...")
 
     egress_policy = EgressPolicy()
     logger.info(

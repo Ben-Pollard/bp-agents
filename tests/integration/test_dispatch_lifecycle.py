@@ -7,6 +7,7 @@ stays "running" — send_message must poll until completion.
 import json
 import os
 import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -72,10 +73,13 @@ def _agent_config() -> AgentConfig:
 
 
 def _sandbox_config() -> SandboxConfig:
+    skills_path = tempfile.mkdtemp()
+    (Path(skills_path) / "tdd" / "SKILL.md").parent.mkdir(parents=True, exist_ok=True)
+    (Path(skills_path) / "tdd" / "SKILL.md").write_text("# TDD skill")
     return SandboxConfig(
         image="symphony-agent:latest",
         workspace_path="/tmp/ws",
-        skills_path="/tmp/skills",
+        skills_path=skills_path,
         runtime="",
         timeout_seconds=60,
     )

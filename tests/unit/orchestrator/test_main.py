@@ -116,7 +116,7 @@ class TestMain:
                 asyncio.run(main_async(tracker=FakeTracker()))
 
             records = [r.message for r in caplog.records]
-            assert "orchestrator starting..." in records
+            assert any("orchestrator starting" in r for r in records)
             assert "orchestrator ready" in records
             assert any("egress allowlist on startup" in r for r in records)
 

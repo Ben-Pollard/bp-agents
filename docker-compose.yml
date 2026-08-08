@@ -123,10 +123,12 @@ services:
   orchestrator:
     build: .
     environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       BP_TARGET_REPO_PATH: ${BP_TARGET_REPO_PATH:-/data/repos/default-project}
       BP_SANDBOX_IMAGE: ${BP_SANDBOX_IMAGE:-symphony-agent:latest}
       BP_SKILLS_PATH: ${BP_SKILLS_PATH:-/app/.agents/skills}
       BP_SANDBOX_RUNTIME: ${BP_SANDBOX_RUNTIME:-runsc}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/user/projects/bp-skills:/home/user/projects/bp-skills:ro

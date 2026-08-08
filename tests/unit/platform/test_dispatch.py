@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -29,11 +30,18 @@ def _agent_config() -> AgentConfig:
     )
 
 
-def _sandbox_config() -> SandboxConfig:
+def _sandbox_config(skills_path: str | None = None) -> SandboxConfig:
+    if skills_path is None:
+        skills_path = tempfile.mkdtemp()
+        Path(skills_path).mkdir(parents=True, exist_ok=True)
+        (Path(skills_path) / "tdd" / "SKILL.md").parent.mkdir(
+            parents=True, exist_ok=True
+        )
+        (Path(skills_path) / "tdd" / "SKILL.md").write_text("# TDD skill")
     return SandboxConfig(
         image="symphony-agent:latest",
         workspace_path="/tmp/ws",
-        skills_path="/tmp/skills",
+        skills_path=skills_path,
         runtime="",
         timeout_seconds=60,
     )
@@ -350,3 +358,50 @@ async def test_dispatch_strips_credentials_from_sandbox_env(
     assert "OPENROUTER_API_KEY" not in passed_cfg.env
     assert "OPENAI_API_KEY" not in passed_cfg.env
     assert passed_cfg.env["FOO"] == "bar"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_raises_when_skills_path_is_empty() -> None:
+    cfg = SandboxConfig(
+        image="symphony-agent:latest",
+        workspace_path="/tmp/ws",
+        skills_path="",
+        runtime="",
+        timeout_seconds=60,
+    )
+    with pytest.raises(RuntimeError, match="skills_path"):
+        await dispatch(
+            sandbox=MagicMock(),
+            sandbox_config=cfg,
+            config=_agent_config(),
+            skill="tdd",
+            prompt="test",
+            workspace="/tmp",
+            outcome_path="/tmp/outcome.json",
+            api_key="sk-test-key",
+        )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_raises_when_skills_path_missing_skill_md() -> None:
+    skills_path = tempfile.mkdtemp()
+    (Path(skills_path) / "empty_skill").mkdir(parents=True, exist_ok=True)
+
+    cfg = SandboxConfig(
+        image="symphony-agent:latest",
+        workspace_path="/tmp/ws",
+        skills_path=skills_path,
+        runtime="",
+        timeout_seconds=60,
+    )
+    with pytest.raises(RuntimeError, match="SKILL.md"):
+        await dispatch(
+            sandbox=MagicMock(),
+            sandbox_config=cfg,
+            config=_agent_config(),
+            skill="tdd",
+            prompt="test",
+            workspace="/tmp",
+            outcome_path="/tmp/outcome.json",
+            api_key="sk-test-key",
+        )
