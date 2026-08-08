@@ -87,7 +87,9 @@ async def test_dispatch_say_hello_against_real_sandbox(
 
     workspace = tempfile.mkdtemp()
     skills_dir = Path(tempfile.mkdtemp())
-    (skills_dir / "tdd.md").write_text("# TDD skill - write code and tests")
+    skill_dir = skills_dir / "tdd"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("# TDD skill - write code and tests")
 
     sandbox = DockerSandbox(egress_policy=EgressPolicy())
     cfg = SandboxConfig(

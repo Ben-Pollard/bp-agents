@@ -1,6 +1,6 @@
 {
   "status": "DONE",
-  "summary": "Applied 5 reduction audit fixes: inlined validate_tdd_output, removed dead MCP_DEFS, removed dead MCP loop in agent_config.py, extracted _result helper in ContractBroker, wired ContractBroker into dispatch()",
-  "test_results": {"passed": 165, "failed": 0, "skipped": 0},
+  "summary": "Converted contracts.py to contracts/__init__.py package; fixed test_dispatch_realtime.py to create skills_dir/tdd/SKILL.md instead of flat tdd.md",
+  "test_results": {"passed": 185, "failed": 0, "skipped": 0},
   "concerns": []
 }

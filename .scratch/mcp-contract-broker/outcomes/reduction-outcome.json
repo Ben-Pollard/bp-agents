@@ -1,81 +1,71 @@
 {
-  "modules_audited": 14,
-  "total_lines": 2287,
-  "lines_eliminable": 40,
+  "spec_compliance": true,
+  "code_quality": {
+    "models_use_pydantic": true,
+    "no_dead_imports": true,
+    "consistent_types": true,
+    "single_responsibility": true
+  },
+  "test_quality": {
+    "unit_coverage": true,
+    "integration_exists": true,
+    "edge_cases_covered": true
+  },
+  "operational": true,
+  "violations": [],
+  "modules_audited": 5,
+  "total_lines": 602,
+  "lines_eliminable": 0,
   "reduction_table": [
     {
-      "module": "src/bp_agents/workflows/sdd/nodes/tdd.py",
-      "lines": 311,
-      "what_changes": "Inline validate_tdd_output() — 2-line pass-through wrapper to TddOutput.model_validate() called exactly once",
-      "reduction": 2,
-      "dep_cost": "none"
-    },
-    {
-      "module": "src/bp_agents/platform/dispatch.py",
-      "lines": 203,
-      "what_changes": "Remove MCP_DEFS empty dict — always unused, to_opencode_json receives {} with no MCPs configured anywhere",
-      "reduction": 1,
-      "dep_cost": "none"
-    },
-    {
-      "module": "src/bp_agents/platform/agent_config.py",
-      "lines": 36,
-      "what_changes": "Remove dead MCP merging loop — config.mcps is always empty, mcp_defs always {}, loop never executes",
-      "reduction": 5,
+      "module": "src/bp_agents/workflows/sdd/contracts.py",
+      "lines": 45,
+      "what_changes": "None — clean Pydantic models, all referenced from production code (main.py, tdd.py, state.py) and tests",
+      "reduction": 0,
       "dep_cost": "none"
     },
     {
       "module": "src/bp_agents/platform/mcp/contract_broker.py",
-      "lines": 190,
-      "what_changes": "Extract _result() helper to eliminate 5 identical dict-structure return blocks in submit(); ~30 lines become ~5",
-      "reduction": 30,
+      "lines": 207,
+      "what_changes": "None — _result (12L) is a valid abstraction reducing call-site duplication; _get_binding/await_acceptance share look-alike checks but differ in error-handling strategy (None vs raise), which is intentional. No dead code — all methods called from production or tests.",
+      "reduction": 0,
       "dep_cost": "none"
     },
     {
-      "module": "tests/unit/workflows/test_sdd_pipeline.py",
-      "lines": 93,
-      "what_changes": "Extract _make_state() helper to eliminate duplicated TicketPipelineState dicts across tests",
-      "reduction": 2,
+      "module": "src/bp_agents/workflows/sdd/state.py",
+      "lines": 51,
+      "what_changes": "Outside ticket scope but noted: TicketPipelineState remains TypedDict while contracts were migrated to BaseModel. Inconsistency only — no elimination without migration.",
+      "reduction": 0,
+      "dep_cost": "none"
+    },
+    {
+      "module": "tests/unit/contracts/test_sdd_contracts.py",
+      "lines": 20,
+      "what_changes": "4 minimal import/subclass checks — appropriate for model validation",
+      "reduction": 0,
+      "dep_cost": "none"
+    },
+    {
+      "module": "tests/unit/platform/test_contract_broker.py",
+      "lines": 199,
+      "what_changes": "Comprehensive: register (3), create_binding (3), submit (6), await_acceptance (2), invalidate (2), expiry (2) — 18 tests. No dead tests.",
+      "reduction": 0,
+      "dep_cost": "none"
+    },
+    {
+      "module": "tests/integration/test_contract_broker_mcp.py",
+      "lines": 80,
+      "what_changes": "Single e2e test: creates real MCPServer on random port, calls submit_contract tool via HTTP, asserts response. Clean fixture pattern with _free_port.",
+      "reduction": 0,
       "dep_cost": "none"
     }
   ],
-  "violations": [
-    {
-      "file_line": "src/bp_agents/workflows/sdd/nodes/tdd.py:38",
-      "lines": 2,
-      "replacement": "Inline TddOutput.model_validate(outcome) at call site line 158",
-      "question": 3,
-      "classification": "delete"
-    },
-    {
-      "file_line": "src/bp_agents/platform/dispatch.py:37",
-      "lines": 1,
-      "replacement": "Remove MCP_DEFS; pass {} directly to to_opencode_json",
-      "question": 3,
-      "classification": "delete"
-    },
-    {
-      "file_line": "src/bp_agents/platform/agent_config.py:29",
-      "lines": 5,
-      "replacement": "Remove dead loop — no MCPs configured in any skill config",
-      "question": 3,
-      "classification": "delete"
-    },
-    {
-      "file_line": "src/bp_agents/platform/mcp/contract_broker.py:86",
-      "lines": 30,
-      "replacement": "Extract _result(accepted, terminal, contract, errors, attempts_remaining) helper, reduce 5 return blocks to 1-liners each",
-      "question": 3,
-      "classification": "delete"
-    },
-    {
-      "file_line": "src/bp_agents/platform/mcp/contract_broker.py:163",
-      "lines": 0,
-      "replacement": "Wire ContractBroker bindings into dispatch() — create_binding before sandbox, submit after outcome read. Currently broker runs MCP server but no dispatch flow creates bindings or calls submit_contract",
-      "question": 3,
-      "classification": "wire-in"
-    }
+  "review_notes": [
+    "All 21 unit tests pass. No dead code, no TypedDict remnants in scope, no eliminable duplication above the 25-line threshold.",
+    "The _result factory method (12 lines) is a net reducer of duplication across 5 call sites, not eliminable.",
+    "state.py still uses TypedDict (out of scope) — consider migrating TicketPipelineState to BaseModel in a follow-up for consistency.",
+    "Integration test runs a real MCP server on a random port — solid coverage.",
+    "action: approved — less than 25 lines of reduction available."
   ],
-  "review_notes": "14 modules audited (2287 lines). 40 lines eliminable (~1.7%). Main savings from extracting a _result() helper in contract_broker.py (30 lines) to replace 5 identical return-dict blocks. Minor wins: inlining validate_tdd_output (2), removing dead MCP_DEFS (1) and dead MCP loop (5). One wire-in violation: ContractBroker MCP server runs but dispatch flow never creates bindings or calls submit_contract — needs integration at dispatch() call site. All ACs met for this ticket (broker functions in isolation). spec_compliance=true because the ticket scopes to 'verifiable in isolation via unit tests and FastMCP integration test'.",
-  "action": "changes_requested"
+  "action": "approved"
 }
