@@ -32,7 +32,7 @@ echo "BP_TARGET_REPO_PATH=/home/$(whoami)/projects/my-project" >> .env
 
 ### 2. Build the sandbox image
 
-The sandbox image (`symphony-agent:latest`) wraps opencode serve inside a Docker container with minimal tools. Build it from the provided Dockerfile:
+The sandbox image (`symphony-agent:latest`) wraps opencode serve inside a Docker container with minimal tools and OpenTelemetry SDK packages for OTEL span export. Build it from the provided Dockerfile:
 
 ```bash
 docker build -t symphony-agent:latest -f Dockerfile.sandbox .
@@ -137,9 +137,37 @@ mitmproxy web interface at port 8081. Inspect and verify egress traffic against 
 
 Long-lived LangGraph process. Polls Redmine for ready tickets and dispatches them through the SDD pipeline state machine with SqliteSaver persistence.
 
+### Observability
+
+The orchestrator runs an OTLP/HTTP receiver (`OtelReceiver`) on port `BP_OTEL_PORT` (default 4318). Agent sessions in the sandbox emit OpenTelemetry spans via the OTEL SDK to `http://orchestrator:{BP_OTEL_PORT}/v1/traces`.
+
+**Log level filtering:**
+
+| `BP_LOG_LEVEL` | Spans shown in stdout |
+|---------------|----------------------|
+| `info` | `session_status`, `session_error` only |
+| `debug` | All spans including `llm_message`, `tool_call` |
+
+Set `BP_LOG_LEVEL=debug` in `.env` to see full LLM message traces and tool calls from agent sessions. This is useful for QA debugging and verifying [AC-06] and [AC-07].
+
 ## Configuration
 
 Copy `.env.example` to `.env` and fill in secrets. Environment variables are injected into the orchestrator container by Docker Compose.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `BP_LOG_LEVEL` | `info` | Orchestrator log level. Set to `debug` for full OTEL span output. |
+| `BP_OTEL_PORT` | `4318` | Port for the OTLP/HTTP receiver. |
+| `BP_POLL_INTERVAL` | `5` | Seconds between Redmine polls. |
+| `BP_PIPELINE_DB_PATH` | `pipeline_checkpoints.db` | Sqlite checkpoint path. |
+| `BP_SANDBOX_IMAGE` | `symphony-agent:latest` | Docker image for agent sandbox. |
+| `BP_TARGET_REPO_PATH` | — | Absolute path to target git repo. |
+| `BP_SKILLS_PATH` | `.agents/skills` | Path to skill directories. |
+| `BP_SANDBOX_RUNTIME` | `runsc` | gVisor runtime for sandbox. |
+| `BP_MCP_PORT` | `8001` | Contract broker MCP server port. |
+| `REDMINE_BASE_URL` | `http://redmine:3000` | Redmine API base URL. |
+| `REDMINE_API_KEY` | — | Redmine API access key. |
+| `REDMINE_PROJECT` | `default` | Redmine project identifier. |
 
 ## Project Structure
 

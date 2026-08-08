@@ -130,11 +130,6 @@ class OtelReceiver:
                     return value.string_value
                 if hasattr(value, "string_value"):
                     return str(value)
-        for attr in getattr(span, "attributes", []):
-            if hasattr(attr, "key") and attr.key == "type":
-                val = attr.value
-                if hasattr(val, "string_value"):
-                    return val.string_value
         return None
 
     @staticmethod

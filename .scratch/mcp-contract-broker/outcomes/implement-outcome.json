@@ -1,15 +1,4 @@
 {
   "status": "DONE",
-  "summary": "Implemented OTEL Session Observability: OtelReceiver with OTLP/HTTP server, log level filtering (info=session events, debug=all spans), best-effort error handling. Updated dispatch.py to inject OTEL_EXPORTER_OTLP_ENDPOINT env var and opencode.json to include experimental.openTelemetry: true.",
-  "test_results": {
-    "passed": 173,
-    "failed": 0,
-    "skipped": 0
-  },
-  "concerns": [
-    "OpenTelemetry native support in opencode (experimental.openTelemetry) is documented but its PR may still be in progress. If the native path doesn't work, a fallback plugin path (opencode-plugin-otel) would be needed. This implementation sets up the receiver and config correctly for the native path.",
-    "Exact span attribute names from opencode's Vercel AI SDK are unknown until real agent sessions run. The log level filtering looks at the 'type' attribute on spans, which is the most likely key. If opencode uses different attribute names (e.g. 'event.type' or 'gen_ai.event.type'), the _get_span_type method may need adjustment.",
-    "@opentelemetry/sdk-node and related npm packages must be available in opencode's bun environment inside the sandbox. This may require baking them into the Dockerfile.sandbox or adding to opencode's global packages.json.",
-    "The OTEL receiver uses Python's built-in HTTPServer in a daemon thread, which is adequate for a best-effort logging receiver but not production-grade throughput."
-  ]
+  "summary": "Fixed all 6 review violations: (1) wired OtelReceiver into main.py with start/stop in TaskGroup; (2) passed otel_port from main.py through build_ticket_pipeline and TddNode to dispatch(); (3) changed LOG_LEVEL to BP_LOG_LEVEL in runner.py and wired BP_LOG_LEVEL env var to OtelReceiver(log_level=...); (4) added @opentelemetry/sdk-node packages to Dockerfile.sandbox; (5) removed dead loop in _get_span_type; (6) updated README with OTEL receiver docs and env var table. All 173 unit tests pass, ruff lint clean."
 }

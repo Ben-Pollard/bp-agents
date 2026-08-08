@@ -65,6 +65,7 @@ class TddNode:
         tracker: "Tracker | None" = None,
         client: OpenCodeClient | None = None,
         max_retries: int = 3,
+        otel_port: int | None = None,
     ) -> None:
         self._sandbox = sandbox
         self._sandbox_config = sandbox_config
@@ -73,6 +74,7 @@ class TddNode:
         self._tracker = tracker
         self._client = client
         self._max_retries = max_retries
+        self._otel_port = otel_port
 
     async def __call__(self, state: TicketPipelineState) -> dict:
         ticket_id = state["ticket_id"]
@@ -115,6 +117,7 @@ class TddNode:
                     outcome_path=sandbox_outcome_path,
                     api_key=api_key,
                     opencode_client=self._client,
+                    otel_port=self._otel_port,
                 )
             except (
                 httpx.ConnectError,

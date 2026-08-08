@@ -140,6 +140,7 @@ def build_ticket_pipeline(
     target_repo_path: str | None = None,
     skills_path: str | None = None,
     open_code_client: "OpenCodeClient | None" = None,
+    otel_port: int | None = None,
 ):
     builder = StateGraph(TicketPipelineState)
 
@@ -157,6 +158,7 @@ def build_ticket_pipeline(
             skills_path=skills_path or "",
             tracker=tracker,
             client=open_code_client,
+            otel_port=otel_port,
         )
     else:
         implement_node = _stub_implement_node(tracker)

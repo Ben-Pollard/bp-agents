@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 def setup_logging() -> None:
-    log_level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+    log_level = getattr(
+        logging, os.getenv("BP_LOG_LEVEL", "INFO").upper(), logging.INFO
+    )
     logging.basicConfig(level=log_level, format="%(asctime)s %(levelname)s %(message)s")
 
 

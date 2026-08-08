@@ -10,6 +10,7 @@ from bp_agents.platform.mcp.contract_broker import (
     ContractBroker,
     create_mcp_server,
 )
+from bp_agents.platform.observability.otel_receiver import OtelReceiver
 from bp_agents.platform.runner import GraphRunner, wait_for_dependency
 from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
@@ -35,6 +36,8 @@ TARGET_REPO_PATH = os.getenv("BP_TARGET_REPO_PATH", "")
 SKILLS_PATH = os.getenv("BP_SKILLS_PATH", ".agents/skills")
 SANDBOX_RUNTIME = os.getenv("BP_SANDBOX_RUNTIME", "runsc")
 MCP_PORT = int(os.getenv("BP_MCP_PORT", "8001"))
+BP_LOG_LEVEL = os.getenv("BP_LOG_LEVEL", "info")
+BP_OTEL_PORT = int(os.getenv("BP_OTEL_PORT", "4318"))
 
 
 def _build_sdd_state(ticket: dict) -> tuple[dict, str]:
@@ -95,6 +98,7 @@ async def main() -> None:
             skills_path=os.path.abspath(SKILLS_PATH)
             if not os.path.isabs(SKILLS_PATH)
             else SKILLS_PATH,
+            otel_port=BP_OTEL_PORT if sandbox_config is not None else None,
         )
 
         poller = TrackerPoller(
@@ -109,6 +113,8 @@ async def main() -> None:
         broker.register("sdd", "revision", RevisionOutput)
         mcp = create_mcp_server(broker)
 
+        otel_receiver = OtelReceiver(log_level=BP_LOG_LEVEL)
+
         async with asyncio.TaskGroup() as tg:
             tg.create_task(
                 mcp.run_streamable_http_async(
@@ -118,6 +124,7 @@ async def main() -> None:
                     stateless_http=True,
                 )
             )
+            await otel_receiver.start(port=BP_OTEL_PORT)
             await runner.start()
 
 
