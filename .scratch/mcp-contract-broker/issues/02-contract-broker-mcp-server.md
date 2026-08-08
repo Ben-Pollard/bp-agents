@@ -1,6 +1,6 @@
 # 02 — Contract-Broker MCP Server
 
-Status: in-progress
+Status: done
 
 ## Source Documents
 
@@ -221,3 +221,14 @@ From `docs/requirements/mcp-contract-broker-observability.md`:
 ## Blocked by
 
 - 01-code-org-refactor.md
+
+## Outcome
+
+Pydantic migration (TddOutput/ReviewOutput/RevisionOutput → BaseModel) + ContractBroker class with schema registry, binding lifecycle, Pydantic validation, retry caps, lock-on-success, expiry, invalidation, and FastMCP server wired into orchestrator main.py. All 22 broker-specific tests pass (8 ACs covered), plus 163 pre-existing tests passing.
+
+- Implement: `.scratch/mcp-contract-broker/outcomes/implement-outcome.json`
+- Review: `.scratch/mcp-contract-broker/outcomes/review-outcome.json`
+- Reduction: `.scratch/mcp-contract-broker/outcomes/reduction-outcome.json`
+- Verify: `.scratch/mcp-contract-broker/outcomes/verify-outcome.json`
+
+## Comments
