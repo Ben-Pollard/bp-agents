@@ -6,19 +6,18 @@ debug=all spans including llm_message and tool_call.
 """
 
 import json
-import logging
+import sys
 import threading
+import traceback
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
-
-logger = logging.getLogger(__name__)
 
 
 class _OtlpHandler(BaseHTTPRequestHandler):
     receiver: "OtelReceiver | None" = None
 
     def log_message(self, format: str, *args: object) -> None:
-        logger.debug("OTLP server: " + format, *args)
+        print(f"OTLP server: {format % args}", file=sys.stderr)
 
     def do_POST(self) -> None:
         if self.path != "/v1/traces":
@@ -58,7 +57,7 @@ class OtelReceiver:
         self._server_port = self._server.server_address[1]
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
-        logger.debug("OTLP receiver started on port %d", self._server_port)
+        print(f"OTLP receiver started on port {self._server_port}", file=sys.stderr)
 
     async def stop(self) -> None:
         if self._server is not None:
@@ -68,7 +67,7 @@ class OtelReceiver:
         if self._thread is not None:
             self._thread.join(timeout=5)
             self._thread = None
-        logger.debug("OTLP receiver stopped")
+        print("OTLP receiver stopped", file=sys.stderr)
 
     def _handle_traces(self, body: bytes) -> None:
         if not body:
@@ -76,7 +75,8 @@ class OtelReceiver:
         try:
             self._process_otlp(body)
         except Exception:
-            logger.exception("failed to process OTLP traces")
+            print("failed to process OTLP traces", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
 
     def _process_otlp(self, body: bytes) -> None:
         from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
@@ -114,11 +114,7 @@ class OtelReceiver:
         if events:
             record["events"] = events
 
-        logger.log(
-            logging.DEBUG if self._log_level == "debug" else logging.INFO,
-            "OTEL span: %s",
-            json.dumps(record),
-        )
+        print(json.dumps(record), file=sys.stdout, flush=True)
 
     @staticmethod
     def _get_span_type(span: object) -> str | None:

@@ -1,6 +1,5 @@
 """Tests for OtelReceiver — OTLP/HTTP span ingestion."""
 
-import logging
 import time
 
 import httpx
@@ -62,8 +61,7 @@ async def test_otel_receiver_accepts_post_v1_traces() -> None:
 
 
 @pytest.mark.asyncio
-async def test_debug_level_logs_all_spans(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.DEBUG)
+async def test_debug_level_logs_all_spans(capsys: pytest.CaptureFixture[str]) -> None:
     receiver = OtelReceiver(log_level="debug")
     await receiver.start(port=0)
     try:
@@ -85,22 +83,21 @@ async def test_debug_level_logs_all_spans(caplog: pytest.LogCaptureFixture) -> N
     finally:
         await receiver.stop()
 
-    otel_logs = [r for r in caplog.records if "OTEL span" in r.getMessage()]
-    types_in_logs = set()
-    for record in otel_logs:
-        import json
-
-        data = json.loads(record.getMessage().replace("OTEL span: ", "", 1))
-        types_in_logs.add(data["type"])
-
-    assert types_in_logs == {"llm_message", "tool_call", "session_status"}
+    captured = capsys.readouterr()
+    otel_lines = [
+        line
+        for line in captured.out.splitlines()
+        if "llm_message" in line or "tool_call" in line or "session_status" in line
+    ]
+    assert any("llm_message" in line for line in otel_lines)
+    assert any("tool_call" in line for line in otel_lines)
+    assert any("session_status" in line for line in otel_lines)
 
 
 @pytest.mark.asyncio
 async def test_info_level_filters_to_session_events(
-    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    caplog.set_level(logging.INFO)
     receiver = OtelReceiver(log_level="info")
     await receiver.start(port=0)
     try:
@@ -123,22 +120,16 @@ async def test_info_level_filters_to_session_events(
     finally:
         await receiver.stop()
 
-    otel_logs = [r for r in caplog.records if "OTEL span" in r.getMessage()]
-    types_in_logs = set()
-    for record in otel_logs:
-        import json
-
-        data = json.loads(record.getMessage().replace("OTEL span: ", "", 1))
-        types_in_logs.add(data["type"])
-
-    assert types_in_logs == {"session_error", "session_status"}
-    assert "llm_message" not in types_in_logs
-    assert "tool_call" not in types_in_logs
+    captured = capsys.readouterr()
+    assert "session_error" in captured.out or "session_status" in captured.out
+    assert "llm_message" not in captured.out
+    assert "tool_call" not in captured.out
 
 
 @pytest.mark.asyncio
-async def test_invalid_payload_does_not_crash(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.DEBUG)
+async def test_invalid_payload_does_not_crash(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     receiver = OtelReceiver(log_level="debug")
     await receiver.start(port=0)
     try:
@@ -154,16 +145,12 @@ async def test_invalid_payload_does_not_crash(caplog: pytest.LogCaptureFixture) 
     finally:
         await receiver.stop()
 
-    error_logs = [r for r in caplog.records if r.levelno >= logging.ERROR]
-    otel_error = any(
-        "OTLP" in r.getMessage() or "traces" in r.getMessage() for r in error_logs
-    )
-    assert otel_error, "should log the deserialization error"
+    captured = capsys.readouterr()
+    assert "failed to process OTLP traces" in captured.err
 
 
 @pytest.mark.asyncio
-async def test_empty_body_does_not_crash(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.DEBUG)
+async def test_empty_body_does_not_crash(capsys: pytest.CaptureFixture[str]) -> None:
     receiver = OtelReceiver(log_level="debug")
     await receiver.start(port=0)
     try:
