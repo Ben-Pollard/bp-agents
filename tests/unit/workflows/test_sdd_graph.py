@@ -186,7 +186,7 @@ class TestTddGraphWire:
 
         caplog.set_level(logging.INFO)
 
-        import bp_agents.workflows.sdd.tdd as tdd_module
+        import bp_agents.workflows.sdd.nodes.tdd as tdd_module
 
         with patch.object(tdd_module, "dispatch", AsyncMock(return_value=outcome)):
             result = await app.ainvoke(
@@ -242,7 +242,7 @@ class TestTddGraphWire:
 
         caplog.set_level(logging.INFO)
 
-        import bp_agents.workflows.sdd.tdd as tdd_module
+        import bp_agents.workflows.sdd.nodes.tdd as tdd_module
 
         with patch.object(tdd_module, "dispatch", AsyncMock(return_value=outcome)):
             result = await app.ainvoke(

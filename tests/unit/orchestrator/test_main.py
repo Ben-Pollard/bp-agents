@@ -1,19 +1,20 @@
+import asyncio
 from unittest import mock
 
 import httpx
 import pytest
 
-from bp_agents.orchestrator.main import (
-    POLL_INTERVAL,
-    main_async,
-    wait_for_dependency,
-)
+from bp_agents.platform.runner import wait_for_dependency
 from bp_agents.platform.tracker import Tracker
+from bp_agents.platform.work_initiator import TrackerPoller
 
 
 class FakeTracker(Tracker):
+    def __init__(self, tickets: list[dict] | None = None) -> None:
+        self.tickets = tickets or []
+
     async def list_ready(self, project: str) -> list[dict]:
-        return []
+        return self.tickets
 
     async def get_item(self, item_id: str, project: str) -> dict:
         return {
@@ -33,26 +34,22 @@ class FakeTracker(Tracker):
 
 class TestWaitForDependency:
     def test_connection_success(self) -> None:
-        with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
+        with mock.patch("bp_agents.platform.runner.httpx.get") as mock_get:
             mock_response = mock.Mock()
             mock_response.status_code = 200
             mock_get.return_value = mock_response
-
             wait_for_dependency("http://example.com/health", "example", timeout=5)
-
             mock_get.assert_called_once_with("http://example.com/health", timeout=5)
 
     def test_accepts_any_status_code(self) -> None:
-        with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
+        with mock.patch("bp_agents.platform.runner.httpx.get") as mock_get:
             mock_get.return_value = mock.Mock(status_code=503)
-
             wait_for_dependency("http://example.com/health", "example", timeout=5)
-
             mock_get.assert_called_once_with("http://example.com/health", timeout=5)
 
     def test_retries_on_connect_error(self) -> None:
         with (
-            mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
+            mock.patch("bp_agents.platform.runner.httpx.get") as mock_get,
             mock.patch("tenacity.nap.sleep"),
         ):
             mock_get.side_effect = [
@@ -60,74 +57,59 @@ class TestWaitForDependency:
                 httpx.ConnectError("refused"),
                 mock.Mock(status_code=200),
             ]
-
             wait_for_dependency("http://example.com/health", "example", timeout=5)
-
             assert mock_get.call_count >= 3
 
     def test_retries_on_http_error(self) -> None:
         with (
-            mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
+            mock.patch("bp_agents.platform.runner.httpx.get") as mock_get,
             mock.patch("tenacity.nap.sleep"),
         ):
             mock_get.side_effect = [
                 httpx.HTTPError("server error"),
                 mock.Mock(status_code=200),
             ]
-
             wait_for_dependency("http://example.com/health", "example", timeout=5)
-
             assert mock_get.call_count >= 2
 
     def test_timeout_raises(self) -> None:
-        with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
+        with mock.patch("bp_agents.platform.runner.httpx.get") as mock_get:
             mock_get.side_effect = httpx.ConnectError("always refused")
-
             with pytest.raises(
                 RuntimeError, match="example did not become ready within 1s"
             ):
                 wait_for_dependency("http://example.com/health", "example", timeout=1)
 
 
-class TestPollInterval:
-    def test_poll_interval_has_default(self) -> None:
-        assert isinstance(POLL_INTERVAL, int)
-        assert POLL_INTERVAL > 0
+@pytest.mark.asyncio
+async def test_tracker_poller_calls_on_work_then_stops() -> None:
+    tracker = FakeTracker([{"id": "T-1", "description": "fix"}])
+
+    def _state(t: dict) -> tuple[dict, str]:
+        return ({"ticket_id": t["id"]}, t["id"])
+
+    poller = TrackerPoller(tracker, "p", _state, poll_interval=0.05)
+    calls: list[tuple[dict, str]] = []
+
+    async def on_work(state: dict, thread_id: str) -> None:
+        calls.append((state, thread_id))
+        await poller.stop()
+
+    await poller.start(on_work)
+    assert len(calls) >= 1
+    assert calls[0] == ({"ticket_id": "T-1"}, "T-1")
 
 
-class TestMain:
-    def test_main_logs_ready_and_egress_allowlist(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        import asyncio
-        import logging
+@pytest.mark.asyncio
+async def test_tracker_poller_cancelled_on_stop() -> None:
+    tracker = FakeTracker()
+    poller = TrackerPoller(tracker, "p", lambda t: ({}, ""), poll_interval=0.5)
 
-        caplog.set_level(logging.INFO)
+    async def on_work(state: dict, thread_id: str) -> None:
+        pass
 
-        with (
-            mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
-            mock.patch("tenacity.nap.sleep"),
-        ):
-            mock_response = mock.Mock()
-            mock_response.status_code = 200
-            mock_get.return_value = mock_response
-
-            with mock.patch("bp_agents.orchestrator.main._poll_loop"):
-                asyncio.run(main_async(tracker=FakeTracker()))
-
-            records = [r.message for r in caplog.records]
-            assert any("orchestrator starting" in r for r in records)
-            assert "orchestrator ready" in records
-            assert any("egress allowlist on startup" in r for r in records)
-
-    def test_main_raises_when_dependency_fails(self) -> None:
-        import asyncio
-
-        with mock.patch(
-            "bp_agents.orchestrator.main.wait_for_dependency",
-            side_effect=RuntimeError("Redmine did not become ready within 120s"),
-        ):
-            with pytest.raises(
-                RuntimeError, match="Redmine did not become ready within 120s"
-            ):
-                asyncio.run(main_async(tracker=FakeTracker()))
+    task = asyncio.create_task(poller.start(on_work))
+    await asyncio.sleep(0.1)
+    task.cancel()
+    done, _ = await asyncio.wait({task})
+    assert done

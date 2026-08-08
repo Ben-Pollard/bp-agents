@@ -1,6 +1,13 @@
 # 01 — Code Organisation Refactor
 
-Status: ready-for-agent
+Status: done
+
+## Outcome
+
+Created `src/bp_agents/platform/mcp/` and `src/bp_agents/platform/observability/` directories with `__init__.py` files. Extracted generic `GraphRunner` + `wait_for_dependency` into `platform/runner.py`. Created `WorkInitiator` ABC + `TrackerPoller` in `platform/work_initiator.py`. Created `main.py` as SDD entry point wiring RedmineTracker, DockerSandbox, pipeline builder, and TrackerPoller into GraphRunner. Lint and 147 unit + 19 integration tests pass. Pre-existing integration failure (`test_dispatch_say_hello_against_real_sandbox`) unchanged.
+
+Outcomes:
+- IMPLEMENT_OUTCOME: `.scratch/mcp-contract-broker/outcomes/implement-outcome.json`
 
 ## Source Documents
 

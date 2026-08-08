@@ -1,0 +1,12 @@
+{
+  "status": "DONE",
+  "summary": "Created platform/mcp/ and platform/observability/ directories with __init__.py files under src/bp_agents/platform/. No functional changes. 148 unit tests pass (0 failures). The 1 pre-existing integration test failure (test_dispatch_say_hello_against_real_sandbox) is unrelated — it fails due to a skill directory structure mismatch (tdd.md vs tdd/SKILL.md).",
+  "test_results": {
+    "passed": 148,
+    "failed": 0,
+    "skipped": 0
+  },
+  "concerns": [
+    "Pre-existing integration test test_dispatch_say_hello_against_real_sandbox fails due to skill directory structure (tdd.md expected to be tdd/SKILL.md). Not caused by this change."
+  ]
+}

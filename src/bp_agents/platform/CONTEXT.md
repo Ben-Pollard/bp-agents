@@ -36,12 +36,9 @@ _Avoid_: Firewall, network rules
 LangGraph mechanism that pauses graph execution for external input. Execution resumes via `Command`.
 _Avoid_: Pause, halt, await
 
-**outcome_path**:
-Filesystem path where a dispatched process writes its output contract. The orchestrator injects this into the session configuration.
-_Avoid_: Output file, result path
 
 **Skill**:
-A markdown instruction file in `.agents/skills/` that defines behaviour for a specific capability. Skills may define their own output contract schema.
+A markdown instruction file in that defines behaviour for a specific capability. Skills may define their own output contract schema.
 _Avoid_: Prompt, template, instruction set
 
 **Platform** (infrastructure):
@@ -52,6 +49,3 @@ _Avoid_: Framework, core, engine
 An abstract interface for discovering and updating units of work from an external system. Each workflow defines its own tracker adapter and work-item model.
 _Avoid_: Backend, store, database
 
-## Flagged ambiguities
-
-- "agent" was used to mean both the opencode process inside the sandbox and the LangGraph graph itself — resolved: "agent" refers to the opencode process; the graph is the "orchestrator" or "pipeline."

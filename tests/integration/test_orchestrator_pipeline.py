@@ -6,7 +6,7 @@ from unittest import mock
 import httpx
 import pytest
 
-from bp_agents.orchestrator.main import wait_for_dependency
+from bp_agents.platform.runner import wait_for_dependency
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.contracts import TicketState
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
@@ -70,14 +70,14 @@ async def test_pipeline_polls_tracker_and_dispatches_tickets(
 
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-    from bp_agents.orchestrator.main import REDMINE_PROJECT
+    REDMINE_PROJECT = "default"
 
     async with AsyncSqliteSaver.from_conn_string(db_path) as checkpointer:
         pipeline = build_ticket_pipeline(checkpointer=checkpointer, tracker=tracker)
 
         ready = await tracker.list_ready(REDMINE_PROJECT)
 
-        logger = logging.getLogger("bp_agents.orchestrator.main")
+        logger = logging.getLogger("bp_agents.platform.runner")
         logger.info(
             "ticket discovery: %d ready  project=%s",
             len(ready),
@@ -122,7 +122,7 @@ async def test_pipeline_polls_tracker_and_dispatches_tickets(
 
 def test_wait_for_dependency_accepts_any_status() -> None:
     with (
-        mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get,
+        mock.patch("bp_agents.platform.runner.httpx.get") as mock_get,
         mock.patch("tenacity.nap.sleep"),
     ):
         mock_get.side_effect = [
@@ -137,7 +137,7 @@ def test_wait_for_dependency_accepts_any_status() -> None:
 
 
 def test_wait_for_dependency_fails_on_persistent_connection_error() -> None:
-    with mock.patch("bp_agents.orchestrator.main.httpx.get") as mock_get:
+    with mock.patch("bp_agents.platform.runner.httpx.get") as mock_get:
         mock_get.side_effect = httpx.ConnectError("always refused")
 
         with pytest.raises(

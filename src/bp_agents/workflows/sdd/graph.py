@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING, Any
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 
+from bp_agents.workflows.sdd.nodes.tdd import TddNode
 from bp_agents.workflows.sdd.state import (
     TicketPipelineState,
 )
-from bp_agents.workflows.sdd.tdd import TddNode
 
 if TYPE_CHECKING:
     from bp_agents.platform.agent_client import OpenCodeClient

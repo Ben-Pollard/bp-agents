@@ -7,12 +7,12 @@ import httpx
 import pytest
 
 from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
-from bp_agents.workflows.sdd.state import TicketPipelineState
-from bp_agents.workflows.sdd.tdd import (
+from bp_agents.workflows.sdd.nodes.tdd import (
     TddNode,
     build_input_contract,
     validate_tdd_output,
 )
+from bp_agents.workflows.sdd.state import TicketPipelineState
 
 
 def _make_state(**overrides: str) -> TicketPipelineState:
@@ -205,7 +205,7 @@ class TestTddNode:
         )
 
         with patch(
-            "bp_agents.workflows.sdd.tdd.dispatch",
+            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
             AsyncMock(return_value=outcome),
         ):
             result = await node(_make_state())
@@ -260,7 +260,7 @@ class TestTddNode:
         )
 
         with patch(
-            "bp_agents.workflows.sdd.tdd.dispatch",
+            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
             AsyncMock(return_value=outcome),
         ):
             result = await node(_make_state())
@@ -307,7 +307,7 @@ class TestTddNode:
         caplog.set_level(logging.INFO)
 
         with patch(
-            "bp_agents.workflows.sdd.tdd.dispatch",
+            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
             AsyncMock(side_effect=FileNotFoundError("outcome.json not found")),
         ):
             result = await node(_make_state())
@@ -345,7 +345,7 @@ class TestTddNode:
         )
 
         with patch(
-            "bp_agents.workflows.sdd.tdd.dispatch",
+            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
             AsyncMock(return_value=outcome),
         ):
             await node(_make_state())
@@ -378,7 +378,7 @@ class TestTddNode:
         )
 
         with patch(
-            "bp_agents.workflows.sdd.tdd.dispatch",
+            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
             AsyncMock(return_value=outcome),
         ):
             await node(_make_state())
@@ -409,7 +409,7 @@ class TestTddNode:
         )
 
         with patch(
-            "bp_agents.workflows.sdd.tdd.dispatch",
+            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
             AsyncMock(return_value=outcome),
         ):
             result = await node(_make_state())
@@ -526,7 +526,7 @@ class TestTddNode:
         caplog.set_level(logging.INFO)
 
         with patch(
-            "bp_agents.workflows.sdd.tdd.dispatch",
+            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
             AsyncMock(
                 side_effect=httpx.ConnectError(
                     "All connection attempts failed",
@@ -568,7 +568,7 @@ class TestTddNode:
 
         mock_req = MagicMock()
         with patch(
-            "bp_agents.workflows.sdd.tdd.dispatch",
+            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
             AsyncMock(
                 side_effect=httpx.ReadTimeout(
                     "POST /session/sess-1/message timed out",

@@ -2,5 +2,6 @@
 
 | Context    | Path                    | Description                           |
 | ---------- | ----------------------- | ------------------------------------- |
-| platform   | `./src/platform/`       | Shared infrastructure, sandbox, contracts |
-| workflows  | `./src/workflows/`      | Agent workflow definitions and domains  |
+| platform   | `./src/bp_agents/platform/`       | Shared infrastructure, sandbox, contracts |
+| workflows  | `./src/bp_agents/workflows/`      | Agent workflow definitions and domains  |
+| sdd        | `./src/bp_agents/workflows/sdd`      | spec-driven-developemtn workflow definition  |
