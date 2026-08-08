@@ -1,6 +1,35 @@
 # 03 — OTEL Session Observability
 
-Status: in-progress
+Status: ready-for-human
+
+## Outcome
+
+All code changes for OTEL Session Observability are complete and verified by passing tests:
+
+**Code implemented:**
+- `OtelReceiver` class in `platform/observability/otel_receiver.py` — OTLP/HTTP server on configurable port, protobuf deserialization, log level filtering (info=session events, debug=all spans), best-effort error handling, writes span JSON directly to stdout via `print()` (bypassing Python logging machinery)
+- `dispatch()` injects `OTEL_EXPORTER_OTLP_ENDPOINT` env var and `experimental.openTelemetry: true` config
+- `agent_config.to_opencode_json()` supports `otel_enabled` flag
+- `setup_logging()` in `runner.py` clears and reconfigures root logger to work after uvicorn pre-configuration
+- `Dockerfile.sandbox` includes `@opentelemetry/sdk-node` and related npm packages
+- `docker-compose.yml` forwards `BP_LOG_LEVEL` (not `LOG_LEVEL`) to orchestrator container
+- README updated with `BP_LOG_LEVEL`, `BP_OTEL_PORT`, and observability docs
+
+**Tests:** 176 unit tests + 12 integration tests pass (including 5 OtelReceiver-specific, 9 OTEL pipeline integration, 3 logging setup tests). Lint clean.
+
+**Remaining infrastructure steps for end-to-end verification (`
+Requires human action):
+1. Rebuild orchestrator Docker image with latest code (`docker compose build orchestrator && docker compose up -d orchestrator`)
+2. Rebuild sandbox Docker image so OTEL npm packages are actually installed (`docker build -f Dockerfile.sandbox -t symphony-agent:latest .`)
+3. Create a ticket in Redmine with status "New" to trigger a dispatch
+4. Set `BP_LOG_LEVEL=debug` in `.env` and restart orchestrator
+5. Verify OTEL spans appear in `docker logs bp-agents-orchestrator-1`
+
+Outcomes:
+- IMPLEMENT_OUTCOME: `.scratch/mcp-contract-broker/outcomes/implement-outcome.json`
+- REVIEW_OUTCOME: `.scratch/mcp-contract-broker/outcomes/review-outcome.json`
+- REDUCTION_OUTCOME: `.scratch/mcp-contract-broker/outcomes/reduction-outcome.json`
+- VERIFY_OUTCOME: `.scratch/mcp-contract-broker/outcomes/verify-outcome.json`
 
 ## Source Documents
 
