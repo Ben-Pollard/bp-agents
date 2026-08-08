@@ -1,36 +1,36 @@
 {
-  "spec_compliance": false,
+  "spec_compliance": true,
   "code_quality": {
+    "deep-modules.md": true,
+    "interface-design.md": true,
+    "refactoring.md": true,
+    "declarative-over-procedural.md": true,
     "SOLID": true,
     "DRY": true,
-    "YAGNI": false,
-    "KISS": true
+    "YAGNI": true
   },
   "test_quality": {
-    "coverage": true,
-    "isolation": true,
-    "integration": true
+    "deep-modules.md": true,
+    "interface-design.md": true,
+    "mocking.md": true
   },
   "operational": true,
   "violations": [
     {
-      "file": "src/bp_agents/platform/mcp/contract_broker.py",
-      "line": 10,
-      "description": "SubmitResult dataclass defined but never instantiated — submit() returns raw dicts. Dead code violates YAGNI and creates a maintenance burden where dict keys must be manually kept in sync with dataclass fields. Since the dataclass is never used as a return type, it should either be removed or used as the actual return type."
-    },
-    {
-      "file": "src/bp_agents/platform/mcp/contract_broker.py",
-      "line": 160,
-      "description": "invalidate() marks binding as invalidated but never removes it from _bindings dict. The ticket states 'removes binding and its event.' Invalidated bindings accumulate in memory for the orchestrator's lifetime, creating a memory leak risk in long-running orchestrator processes. Should either delete the binding or document the leak as accepted."
+      "file": "tests/unit/platform/test_contract_broker.py:35",
+      "description": "test_register_accepts_model accesses broker._registry (private attr) instead of testing through public behavior — violates 'test through public API' principle in tests.md"
     }
   ],
   "review_notes": [
-    "All 66 tests pass (contract unit tests + broker unit tests + FastMCP integration test + TDD node/graph tests with Pydantic migration). Ruff lint passes.",
-    "Pydantic migration clean: TypedDict → BaseModel with same fields. All usages updated to attribute access (model_validate, model_dump, .status).",
-    "ContractBroker implementation matches the gap analysis interface. Schema registry, binding lifecycle, validation, lock-on-success, expiry, invalidation all present.",
-    "TddNode still has its own retry loop — expected per ticket scope (retry loop removal deferred to a later issue).",
-    "FastMCP integration test on random port works end-to-end with streamable-http.",
-    "The SubmitResult dataclass dead code and invalidate() memory leak are minor but should be fixed before this code reaches production."
+    "All acceptance criteria met with 22/22 passing tests for contracts + broker + MCP",
+    "TddOutput, ReviewOutput, RevisionOutput migrated from TypedDict to pydantic.BaseModel in contracts.py",
+    "ContractBroker implements full lifecycle: register, create_binding, submit, await_acceptance, invalidate",
+    "submit returns correct results for valid, invalid, max_attempts, already-accepted, and unknown-token paths",
+    "await_acceptance blocks via asyncio.Event and returns AcceptedContract",
+    "invalidate cleanly removes binding and wakes waiters",
+    "FastMCP integration test starts server on random port, calls submit_contract via HTTP, verifies acceptance",
+    "All existing downstream modules (state.py, tdd.py) compile and tests pass",
+    "Minor: test_register_accepts_model accesses private _registry — behavioral coverage exists via create_binding tests"
   ],
-  "action": "changes_requested"
+  "action": "approved"
 }

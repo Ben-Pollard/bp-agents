@@ -2,9 +2,12 @@ import asyncio
 import secrets
 import time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from mcp.server import MCPServer
 from pydantic import BaseModel, ValidationError
+
+if TYPE_CHECKING:
+    from mcp.server import MCPServer
 
 
 @dataclass
@@ -159,11 +162,13 @@ class ContractBroker:
 
 def create_mcp_server(
     broker: ContractBroker, name: str = "ContractBroker"
-) -> MCPServer:
+) -> "MCPServer":
     """Wrap a ContractBroker instance in an MCP server.
 
     Exposes the submit_contract tool for agents to call.
     """
+    from mcp.server import MCPServer
+
     mcp = MCPServer(name)
 
     @mcp.tool()

@@ -6,11 +6,16 @@ from dotenv import load_dotenv
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from bp_agents.platform.dispatch import CREDENTIAL_KEYS
+from bp_agents.platform.mcp.contract_broker import (
+    ContractBroker,
+    create_mcp_server,
+)
 from bp_agents.platform.runner import GraphRunner, wait_for_dependency
 from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
 from bp_agents.platform.sandbox.egress import EgressPolicy
 from bp_agents.platform.work_initiator import TrackerPoller
+from bp_agents.workflows.sdd.contracts import ReviewOutput, RevisionOutput, TddOutput
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
 from bp_agents.workflows.sdd.state import initial_ticket_state
 from bp_agents.workflows.sdd.tracker import RedmineTracker
@@ -29,6 +34,7 @@ SANDBOX_IMAGE = os.getenv("BP_SANDBOX_IMAGE", "symphony-agent:latest")
 TARGET_REPO_PATH = os.getenv("BP_TARGET_REPO_PATH", "")
 SKILLS_PATH = os.getenv("BP_SKILLS_PATH", ".agents/skills")
 SANDBOX_RUNTIME = os.getenv("BP_SANDBOX_RUNTIME", "runsc")
+MCP_PORT = int(os.getenv("BP_MCP_PORT", "8001"))
 
 
 def _build_sdd_state(ticket: dict) -> tuple[dict, str]:
@@ -96,7 +102,23 @@ async def main() -> None:
         )
         runner = GraphRunner()
         runner.register("sdd", pipeline, poller)
-        await runner.start()
+
+        broker = ContractBroker()
+        broker.register("sdd", "tdd", TddOutput)
+        broker.register("sdd", "code_review", ReviewOutput)
+        broker.register("sdd", "revision", RevisionOutput)
+        mcp = create_mcp_server(broker)
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(
+                mcp.run_streamable_http_async(
+                    host="127.0.0.1",
+                    port=MCP_PORT,
+                    json_response=True,
+                    stateless_http=True,
+                )
+            )
+            await runner.start()
 
 
 if __name__ == "__main__":

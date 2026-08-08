@@ -1,0 +1,46 @@
+{
+  "modules_audited": 5,
+  "total_lines": 801,
+  "lines_eliminable": 39,
+  "reduction_table": [
+    {
+      "module": "src/bp_agents/workflows/sdd/contracts.py",
+      "lines": 59,
+      "what_changes": "Delete unused Ticket dataclass and its imports (dataclass, field, datetime). Ticket is never imported by any source file — only TicketState and the Pydantic models are consumed.",
+      "reduction": 12,
+      "dep_cost": "none"
+    },
+    {
+      "module": "src/bp_agents/platform/mcp/contract_broker.py",
+      "lines": 185,
+      "what_changes": "Wire create_mcp_server() into orchestrator/main.py startup flow. Currently only called from integration test. Function and MCPServer import are dead in production but match AC requirement 'FastMCP server exposes submit_contract tool via HTTP'.",
+      "reduction": 27,
+      "dep_cost": "none"
+    }
+  ],
+  "violations": [
+    {
+      "file_line": "src/bp_agents/workflows/sdd/contracts.py:9",
+      "lines": 10,
+      "replacement": "Delete unused class Ticket (line 9-18) and its supporting imports (line 1: from dataclasses import dataclass, field; line 2: from datetime import datetime). TicketState and pydantic models remain.",
+      "question": 3,
+      "classification": "delete"
+    },
+    {
+      "file_line": "src/bp_agents/platform/mcp/contract_broker.py:160",
+      "lines": 26,
+      "replacement": "Wire create_mcp_server() into orchestrator/main.py: instantiate broker, register SDD stage schemas, call create_mcp_server(), and run via run_streamable_http_async on configurable port.",
+      "question": 3,
+      "classification": "wire-in"
+    },
+    {
+      "file_line": "src/bp_agents/platform/mcp/contract_broker.py:6",
+      "lines": 1,
+      "replacement": "Import MCPServer only when create_mcp_server is wired in. Can be moved inside function or behind TYPE_CHECKING if deferring the wire-in.",
+      "question": 3,
+      "classification": "wire-in"
+    }
+  ],
+  "review_notes": "Reduction audit of 5 src modules (801 lines). Two violations found: (1) Ticket dataclass in contracts.py is dead code — never imported by any source file, only TicketState and Pydantic models are consumed. (2) create_mcp_server() in contract_broker.py implements the FastMCP tool requirement but is only called from the integration test, never wired into orchestrator/main.py. Total 39 eliminable lines across 2 modules, all Q3 (unnecessary). No Q1 or Q2 violations found — stdlib/library coverage is appropriate; Pydantic for contract schemas, dataclass for internal state, asyncio.Event for lock-on-success are all correct choices.",
+  "action": "changes-requested"
+}
