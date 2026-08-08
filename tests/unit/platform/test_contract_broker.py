@@ -173,7 +173,7 @@ class TestInvalidate:
     ) -> None:
         token = registered_broker.create_binding("sdd", "tdd", "run-7")
         registered_broker.invalidate(token)
-        with pytest.raises(ValueError, match="invalidated"):
+        with pytest.raises(ValueError, match="unknown token"):
             await registered_broker.await_acceptance(token)
 
 

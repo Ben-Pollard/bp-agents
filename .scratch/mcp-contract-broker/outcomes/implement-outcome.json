@@ -1,6 +1,6 @@
 {
   "status": "DONE",
-  "summary": "Pydantic migration of TddOutput/ReviewOutput/RevisionOutput + ContractBroker class with registration, binding lifecycle, validation, lock-on-success, FastMCP server",
-  "test_results": {"passed": 187, "failed": 0, "skipped": 0},
+  "summary": "Removed dead SubmitResult dataclass; fixed invalidate() to pop binding from _bindings and set event",
+  "test_results": {"passed": 18, "failed": 0, "skipped": 0},
   "concerns": []
 }

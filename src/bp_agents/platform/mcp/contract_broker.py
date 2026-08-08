@@ -8,15 +8,6 @@ from pydantic import BaseModel, ValidationError
 
 
 @dataclass
-class SubmitResult:
-    accepted: bool
-    contract: dict | None = None
-    errors: list[dict] | None = None
-    attempts_remaining: int | None = None
-    terminal: bool = False
-
-
-@dataclass
 class AcceptedContract:
     workflow: str
     stage: str
@@ -150,6 +141,8 @@ class ContractBroker:
         if elapsed > binding.ttl_seconds:
             raise ValueError(f"binding expired: {token}")
         await binding.event.wait()
+        if binding.invalidated:
+            raise ValueError(f"binding invalidated: {token}")
         return AcceptedContract(
             workflow=binding.workflow,
             stage=binding.stage,
@@ -158,9 +151,10 @@ class ContractBroker:
         )
 
     def invalidate(self, token: str) -> None:
-        binding = self._bindings.get(token)
+        binding = self._bindings.pop(token, None)
         if binding is not None:
             binding.invalidated = True
+            binding.event.set()
 
 
 def create_mcp_server(
