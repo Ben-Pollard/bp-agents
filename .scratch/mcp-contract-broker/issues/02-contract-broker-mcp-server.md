@@ -1,6 +1,6 @@
 # 02 — Contract-Broker MCP Server
 
-Status: ready-for-agent
+Status: in-progress
 
 ## Source Documents
 
