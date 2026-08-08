@@ -34,7 +34,7 @@ PROVIDER_DEFINITIONS: dict = {
         "models": {
             "deepseek/deepseek-v4-flash": {
                 "name": "DeepSeek V4 Flash",
-                "limit": {"context": 131072},
+                "limit": {"context": 131072, "output": 65536},
             },
         },
     },
@@ -167,6 +167,8 @@ async def dispatch(
     if broker_token is not None:
         env["CONTRACT_BROKER_TOKEN"] = broker_token
 
+    logger.debug("dispatch: building SandboxConfig with image=%s", sandbox_config.image)
+
     cfg = SandboxConfig(
         image=sandbox_config.image,
         workspace_path=workspace,
@@ -185,7 +187,18 @@ async def dispatch(
         command=sandbox_config.command,
     )
 
+    logger.debug(
+        "dispatch: sandbox config built, calling create with network=%s runtime=%s",
+        cfg.network,
+        cfg.runtime,
+    )
+
     sandbox_session = await sandbox.create(cfg)
+    logger.debug(
+        "sandbox create returned: session=%s base_url=%s",
+        sandbox_session.container_id,
+        sandbox_session.base_url,
+    )
     own_client = opencode_client is None
     client = opencode_client or OpenCodeClient(sandbox_session.base_url)
     oc_session = None

@@ -11,9 +11,6 @@ class AgentConfig:
     mcps: dict[str, bool]
 
 
-_SANDBOX_SKILLS_MOUNT = "/data/skills"
-
-
 def to_opencode_json(
     config: AgentConfig,
     provider_defs: dict,
@@ -33,5 +30,10 @@ def to_opencode_json(
     if otel_enabled:
         result["experimental"] = {"openTelemetry": True}
     if skills_path and Path(skills_path).is_dir():
-        result["skills"] = [_SANDBOX_SKILLS_MOUNT]
+        skills_map = {}
+        for d in sorted(Path(skills_path).iterdir()):
+            if d.is_dir() and (d / "SKILL.md").is_file():
+                skills_map[d.name] = f"/data/skills/{d.name}/SKILL.md"
+        if skills_map:
+            result["skills"] = skills_map
     return result

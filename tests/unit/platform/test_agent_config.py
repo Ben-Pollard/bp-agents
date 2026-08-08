@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from bp_agents.platform.agent_config import (
-    _SANDBOX_SKILLS_MOUNT,
     AgentConfig,
     to_opencode_json,
 )
@@ -52,7 +51,7 @@ def test_to_opencode_json_includes_permissions() -> None:
     assert result["permission"]["bash"] == {"sudo *": "deny", "*": "allow"}
 
 
-def test_to_opencode_json_skills_path_adds_skills_array() -> None:
+def test_to_opencode_json_skills_path_adds_skills_object() -> None:
     import tempfile
 
     skills_path = tempfile.mkdtemp()
@@ -61,7 +60,7 @@ def test_to_opencode_json_skills_path_adds_skills_array() -> None:
 
     result = to_opencode_json(_config(), {}, {}, skills_path=skills_path)
     assert "skills" in result
-    assert result["skills"] == [_SANDBOX_SKILLS_MOUNT]
+    assert result["skills"] == {"tdd": "/data/skills/tdd/SKILL.md"}
 
 
 def test_to_opencode_json_empty_skills_path_omits_skills() -> None:
