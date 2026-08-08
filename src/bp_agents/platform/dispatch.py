@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import secrets
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -130,11 +131,27 @@ async def dispatch(
         {},
         skills_path=skills_path,
         otel_enabled=otel_port is not None,
+        plugins=["otel-observability.ts"],
     )
     opencode_path = os.path.join(workspace, "opencode.json")
     with open(opencode_path, "w") as f:
         json.dump(opencode_config, f, indent=2)
     logger.debug("wrote %s config=%s", opencode_path, json.dumps(opencode_config))
+
+    # Copy OTEL plugin to workspace so opencode can load it
+    _plugin_src = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "..",
+        ".agents",
+        "plugins",
+        "otel-observability.ts",
+    )
+    _plugin_dst = os.path.join(workspace, "otel-observability.ts")
+    if os.path.exists(_plugin_src):
+        shutil.copy2(_plugin_src, _plugin_dst)
+        logger.debug("copied OTEL plugin to %s", _plugin_dst)
 
     broker_token: str | None = None
     if broker is not None:

@@ -20,13 +20,16 @@ def to_opencode_json(
     mcp_defs: dict,
     skills_path: str = "",
     otel_enabled: bool = True,
+    plugins: list[str] | None = None,
 ) -> dict:
     result: dict = {
         "$schema": "https://opencode.ai/config.json",
         "provider": provider_defs,
         "permission": config.permissions,
-        "mcp": {},
+        "mcp": mcp_defs,
     }
+    if plugins:
+        result["plugin"] = plugins
     if otel_enabled:
         result["experimental"] = {"openTelemetry": True}
     if skills_path and Path(skills_path).is_dir():

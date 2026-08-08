@@ -8,12 +8,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g opencode-ai @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-proto @opentelemetry/resources @opentelemetry/semantic-conventions
+RUN npm install -g opencode-ai \
+    @opentelemetry/sdk-node \
+    @opentelemetry/api \
+    @opentelemetry/sdk-trace-base \
+    @opentelemetry/context-async-hooks \
+    @opentelemetry/exporter-trace-otlp-http \
+    @opentelemetry/resources \
+    @opentelemetry/semantic-conventions \
+    @effect/opentelemetry
 
 ENV PATH="/root/.local/bin:${PATH}"
+
+COPY .agents/plugins/otel-observability.ts /usr/lib/node_modules/@otel-plugin/index.ts
+
+RUN mkdir -p /root/.config/opencode && \
+    echo '{"$schema":"https://opencode.ai/config.json","provider":{},"permission":{},"mcp":{}}' > /root/.config/opencode/opencode.json
 
 EXPOSE 8080
 
 WORKDIR /data
 
-CMD ["opencode", "serve", "--port", "8080", "--print-logs", "--pure", "--hostname", "0.0.0.0"]
+COPY .agents/sandbox-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["opencode", "serve", "--port", "8080", "--print-logs", "--hostname", "0.0.0.0"]

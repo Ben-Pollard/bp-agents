@@ -1,6 +1,6 @@
 # 03 — OTEL Session Observability
 
-Status: ready-for-human
+Status: in-progress
 
 ## Outcome
 
@@ -187,6 +187,15 @@ From `docs/architecture/gap-analysis-contract-broker.md`:
 - [ ] At `BP_LOG_LEVEL=debug`, orchestrator stdout shows LLM messages and tool calls from a real dispatch
 - [ ] At `BP_LOG_LEVEL=info`, orchestrator stdout shows session status but no full LLM content
 - [ ] If the OTEL receiver is down, the agent session still completes successfully (best-effort)
+
+### Canary Test Gates (E2E)
+
+These tests MUST pass in order. Each is a precondition for the next. Any RED test tells you exactly what infrastructure step is missing.
+
+- [ ] `test_sandbox_has_otel_npm_packages` — `@opentelemetry/*` npm packages installed in sandbox image (`tests/e2e/test_otel_observability.py`)
+- [ ] `test_orchestrator_otel_receiver_accepts_spans` — OtelReceiver running in orchestrator, accepts OTLP POST (`tests/e2e/test_otel_observability.py`)
+- [ ] `test_otel_span_appears_in_orchestrator_logs` — Submitted span JSON appears in `docker logs orchestrator` (`tests/e2e/test_otel_observability.py`)
+- [ ] `test_info_level_suppresses_llm_spans_in_logs` — Log level filtering works end-to-end (`tests/e2e/test_otel_observability.py`)
 
 ## Blocked by
 
