@@ -90,6 +90,7 @@ async def dispatch(
     api_key: str,
     opencode_client: OpenCodeClient | None = None,
     broker: "ContractBroker | None" = None,
+    otel_port: int | None = None,
 ) -> dict:
     """Full agent lifecycle.
 
@@ -124,7 +125,11 @@ async def dispatch(
         )
 
     opencode_config = to_opencode_json(
-        config, PROVIDER_DEFINITIONS, {}, skills_path=skills_path
+        config,
+        PROVIDER_DEFINITIONS,
+        {},
+        skills_path=skills_path,
+        otel_enabled=otel_port is not None,
     )
     opencode_path = os.path.join(workspace, "opencode.json")
     with open(opencode_path, "w") as f:
@@ -140,6 +145,8 @@ async def dispatch(
         **{k: v for k, v in sandbox_config.env.items() if k not in CREDENTIAL_KEYS},
         "outcome_path": outcome_path,
     }
+    if otel_port is not None:
+        env["OTEL_EXPORTER_OTLP_ENDPOINT"] = f"http://orchestrator:{otel_port}"
     if broker_token is not None:
         env["CONTRACT_BROKER_TOKEN"] = broker_token
 

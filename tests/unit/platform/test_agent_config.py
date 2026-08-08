@@ -72,3 +72,13 @@ def test_to_opencode_json_empty_skills_path_omits_skills() -> None:
 def test_to_opencode_json_nonexistent_skills_path_omits_skills() -> None:
     result = to_opencode_json(_config(), {}, {}, skills_path="/nonexistent/path")
     assert "skills" not in result
+
+
+def test_to_opencode_json_otel_enabled() -> None:
+    result = to_opencode_json(_config(), {}, {})
+    assert result["experimental"]["openTelemetry"] is True
+
+
+def test_to_opencode_json_otel_enabled_false() -> None:
+    result = to_opencode_json(_config(), {}, {}, otel_enabled=False)
+    assert "experimental" not in result

@@ -405,3 +405,57 @@ async def test_dispatch_raises_when_skills_path_missing_skill_md() -> None:
             outcome_path="/tmp/outcome.json",
             api_key="sk-test-key",
         )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_injects_otel_env_var(
+    mock_sandbox: MagicMock, workspace: str
+) -> None:
+    outcome_data = {
+        "status": "DONE",
+        "summary": "ok",
+        "test_results": {"passed": 1, "failed": 0, "skipped": 0},
+        "concerns": [],
+    }
+    with open(os.path.join(workspace, OUTCOME_FILENAME), "w") as f:
+        json.dump(outcome_data, f)
+
+    oc_client = MagicMock()
+    oc_client.auth_set = AsyncMock(return_value=True)
+    oc_client.create_session = AsyncMock(return_value=MagicMock(session_id="sess-1"))
+    oc_client.send_message = AsyncMock(return_value={"state": "completed"})
+    oc_client.session_status = AsyncMock(
+        return_value={"id": "sess-1", "state": "completed"}
+    )
+    oc_client.abort = AsyncMock(return_value=True)
+    oc_client.close = AsyncMock()
+
+    with (
+        patch("bp_agents.platform.dispatch.OpenCodeClient", return_value=oc_client),
+        patch(
+            "bp_agents.platform.dispatch._wait_for_health", AsyncMock(return_value=True)
+        ),
+    ):
+        await dispatch(
+            sandbox=mock_sandbox,
+            sandbox_config=_sandbox_config(),
+            config=_agent_config(),
+            skill="tdd",
+            prompt="test",
+            workspace=workspace,
+            outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
+            api_key="sk-test-key",
+            otel_port=4318,
+        )
+
+    create_call = mock_sandbox.create.call_args
+    assert create_call is not None
+    passed_cfg = create_call[0][0]
+    assert (
+        passed_cfg.env.get("OTEL_EXPORTER_OTLP_ENDPOINT") == "http://orchestrator:4318"
+    )
+
+    opencode_path = os.path.join(workspace, "opencode.json")
+    with open(opencode_path) as f:
+        cfg = json.load(f)
+    assert cfg["experimental"]["openTelemetry"] is True
