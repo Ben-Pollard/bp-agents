@@ -46,6 +46,34 @@ HEALTH_CHECK_RETRIES = 30
 HEALTH_CHECK_INTERVAL = 1.0
 
 
+async def _stream_container_logs(
+    container_id: str,
+    log: logging.Logger,
+) -> asyncio.Task:
+    """Tail sandbox container logs to orchestrator stdout."""
+
+    async def _stream() -> None:
+        try:
+            import docker
+
+            client = docker.from_env()
+            container = client.containers.get(container_id)
+            for line in await asyncio.to_thread(
+                container.logs,
+                stdout=True,
+                stderr=True,
+                stream=True,
+                follow=True,
+                timestamps=True,
+            ):
+                text = line.decode(errors="replace").rstrip()
+                log.info("[sandbox] %s", text)
+        except Exception:
+            log.debug("sandbox log stream ended for %s", container_id)
+
+    return asyncio.create_task(_stream())
+
+
 async def _wait_for_health(
     base_url: str, max_retries: int = HEALTH_CHECK_RETRIES
 ) -> bool:
@@ -194,6 +222,7 @@ async def dispatch(
     )
 
     sandbox_session = await sandbox.create(cfg)
+    log_stream = await _stream_container_logs(sandbox_session.container_id, logger)
     logger.debug(
         "sandbox create returned: session=%s base_url=%s",
         sandbox_session.container_id,
@@ -202,6 +231,7 @@ async def dispatch(
     own_client = opencode_client is None
     client = opencode_client or OpenCodeClient(sandbox_session.base_url)
     oc_session = None
+    log_stream = None
 
     try:
         healthy = await _wait_for_health(sandbox_session.base_url)
@@ -245,6 +275,12 @@ async def dispatch(
 
         return outcome
     finally:
+        if log_stream is not None:
+            log_stream.cancel()
+            try:
+                await log_stream
+            except (asyncio.CancelledError, Exception):
+                pass
         if oc_session is not None:
             try:
                 await client.abort(oc_session)
