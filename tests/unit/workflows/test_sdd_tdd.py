@@ -42,7 +42,7 @@ class TestValidateTddOutput:
             "concerns": [],
         }
         result = validate_tdd_output(data)
-        assert result["status"] == "DONE"
+        assert result.status == "DONE"
 
     def test_valid_done_with_concerns(self) -> None:
         data = {
@@ -52,7 +52,7 @@ class TestValidateTddOutput:
             "concerns": ["Performance needs improvement"],
         }
         result = validate_tdd_output(data)
-        assert result["status"] == "DONE_WITH_CONCERNS"
+        assert result.status == "DONE_WITH_CONCERNS"
 
     def test_valid_blocked(self) -> None:
         data = {
@@ -62,7 +62,7 @@ class TestValidateTddOutput:
             "concerns": ["Module utils.validators not yet implemented"],
         }
         result = validate_tdd_output(data)
-        assert result["status"] == "BLOCKED"
+        assert result.status == "BLOCKED"
 
     def test_valid_fail(self) -> None:
         data = {
@@ -72,20 +72,24 @@ class TestValidateTddOutput:
             "concerns": ["Network timeout"],
         }
         result = validate_tdd_output(data)
-        assert result["status"] == "FAIL"
+        assert result.status == "FAIL"
 
     def test_missing_field_raises(self) -> None:
-        with pytest.raises(ValueError, match="missing fields"):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="Field required"):
             validate_tdd_output({"status": "DONE"})
 
     def test_invalid_status_raises(self) -> None:
+        from pydantic import ValidationError
+
         data = {
             "status": "INVALID",
             "summary": "",
             "test_results": {},
             "concerns": [],
         }
-        with pytest.raises(ValueError, match="Invalid TddOutput status"):
+        with pytest.raises(ValidationError, match="Input should be"):
             validate_tdd_output(data)
 
 
@@ -211,8 +215,8 @@ class TestTddNode:
             result = await node(_make_state())
 
         assert result["status"] == "awaiting_review"
-        assert result["tdd_output"]["status"] == "DONE"
-        assert result["tdd_output"]["summary"] == "Implemented hello world"
+        assert result["tdd_output"].status == "DONE"
+        assert result["tdd_output"].summary == "Implemented hello world"
 
         log = subprocess.run(
             ["git", "log", "--oneline", "-1"],
@@ -269,7 +273,7 @@ class TestTddNode:
             "agent: Module utils.validators not yet implemented"
         )
         assert "status" not in result
-        assert result["tdd_output"]["status"] == "BLOCKED"
+        assert result["tdd_output"].status == "BLOCKED"
 
         log = subprocess.run(
             ["git", "log", "--oneline", "-1"],

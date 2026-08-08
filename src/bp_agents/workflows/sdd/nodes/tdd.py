@@ -36,13 +36,7 @@ def _run_git(repo_path: str, *args: str) -> None:
 
 
 def validate_tdd_output(data: dict) -> TddOutput:
-    required = {"status", "summary", "test_results", "concerns"}
-    missing = required - set(data.keys())
-    if missing:
-        raise ValueError(f"Invalid TddOutput, missing fields: {sorted(missing)}")
-    if data["status"] not in ("DONE", "DONE_WITH_CONCERNS", "BLOCKED", "FAIL"):
-        raise ValueError(f"Invalid TddOutput status: {data['status']}")
-    return TddOutput(**data)
+    return TddOutput.model_validate(data)
 
 
 def build_input_contract(
@@ -171,15 +165,15 @@ class TddNode:
             logger.info(
                 "ticket %s: tdd output  contract=%s",
                 ticket_id,
-                json.dumps(tdd_output),
+                json.dumps(tdd_output.model_dump()),
             )
 
             if self._tracker is not None:
                 await self._tracker.add_comment(
-                    ticket_id, json.dumps(tdd_output), project
+                    ticket_id, json.dumps(tdd_output.model_dump()), project
                 )
 
-            if tdd_output["status"] == "FAIL":
+            if tdd_output.status == "FAIL":
                 if attempt < self._max_retries:
                     logger.info(
                         "ticket %s: transient fail, retrying (%d/%d)",
@@ -201,7 +195,7 @@ class TddNode:
                     "auto: transient failure",
                 )
 
-            if tdd_output["status"] == "BLOCKED":
+            if tdd_output.status == "BLOCKED":
                 return await self._handle_non_complete(
                     state,
                     tdd_output,
@@ -272,7 +266,7 @@ class TddNode:
         default_reason: str,
     ) -> dict:
         ticket_id = state["ticket_id"]
-        concerns = tdd_output.get("concerns") or []
+        concerns = tdd_output.concerns or []
         detail = "; ".join(concerns).strip()
         reason = f"{reason_prefix}{detail}" if detail else default_reason
         logger.info("ticket %s: %s, reason: %s", ticket_id, log_kind, reason)

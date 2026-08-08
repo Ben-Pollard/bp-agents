@@ -1,7 +1,9 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal, TypedDict
+from typing import Literal
+
+from pydantic import BaseModel
 
 
 @dataclass
@@ -30,14 +32,14 @@ class TicketState(StrEnum):
     DONE = "done"
 
 
-class TddOutput(TypedDict):
+class TddOutput(BaseModel):
     status: Literal["DONE", "DONE_WITH_CONCERNS", "BLOCKED", "FAIL"]
     summary: str
     test_results: dict
     concerns: list[str]
 
 
-class ReviewOutput(TypedDict):
+class ReviewOutput(BaseModel):
     spec_compliance: bool
     code_quality: dict[str, bool]
     test_quality: dict[str, bool]
@@ -47,7 +49,7 @@ class ReviewOutput(TypedDict):
     action: Literal["approved", "changes_requested"]
 
 
-class RevisionOutput(TypedDict):
+class RevisionOutput(BaseModel):
     status: Literal["DONE", "DONE_WITH_CONCERNS", "BLOCKED"]
     summary: str
     violations_addressed: list[dict]

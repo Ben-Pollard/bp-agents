@@ -194,7 +194,7 @@ class TestTddGraphWire:
                 {"configurable": {"thread_id": "TICK-1"}},
             )
 
-        assert result["tdd_output"]["status"] == "DONE"
+        assert result["tdd_output"].status == "DONE"
 
         messages = [r.message for r in caplog.records]
         assert any("dispatching tdd" in m for m in messages)

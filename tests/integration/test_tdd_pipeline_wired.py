@@ -116,7 +116,7 @@ async def test_tdd_pipeline_wired_dispatch_logs_contracts(
         {"configurable": {"thread_id": "TICK-1"}},
     )
 
-    assert result["tdd_output"]["status"] == "DONE"
+    assert result["tdd_output"].status == "DONE"
 
     messages = [r.message for r in caplog.records]
 
