@@ -1,71 +1,90 @@
 {
-  "spec_compliance": true,
-  "code_quality": {
-    "models_use_pydantic": true,
-    "no_dead_imports": true,
-    "consistent_types": true,
-    "single_responsibility": true
-  },
-  "test_quality": {
-    "unit_coverage": true,
-    "integration_exists": true,
-    "edge_cases_covered": true
-  },
-  "operational": true,
-  "violations": [],
-  "modules_audited": 5,
-  "total_lines": 602,
-  "lines_eliminable": 0,
+  "modules_audited": 8,
+  "total_lines": 1285,
+  "lines_eliminable": 10,
   "reduction_table": [
     {
-      "module": "src/bp_agents/workflows/sdd/contracts.py",
-      "lines": 45,
-      "what_changes": "None — clean Pydantic models, all referenced from production code (main.py, tdd.py, state.py) and tests",
+      "module": "src/bp_agents/platform/observability/otel_receiver.py",
+      "lines": 165,
+      "what_changes": "Remove GET /health handler (8 dead lines). Remove dead str() fallback in _get_span_type (2 dead lines). Net -10.",
+      "reduction": 10,
+      "dep_cost": "none"
+    },
+    {
+      "module": "src/bp_agents/platform/observability/__init__.py",
+      "lines": 0,
+      "what_changes": "Empty init stub, required for package. No reduction.",
       "reduction": 0,
       "dep_cost": "none"
     },
     {
-      "module": "src/bp_agents/platform/mcp/contract_broker.py",
-      "lines": 207,
-      "what_changes": "None — _result (12L) is a valid abstraction reducing call-site duplication; _get_binding/await_acceptance share look-alike checks but differ in error-handling strategy (None vs raise), which is intentional. No dead code — all methods called from production or tests.",
+      "module": "src/bp_agents/platform/agent_config.py",
+      "lines": 34,
+      "what_changes": "34 lines. All wired: to_opencode_json called from dispatch with otel_enabled flag. _SANDBOX_SKILLS_MOUNT used once, inlineable but under threshold. No reduction.",
       "reduction": 0,
       "dep_cost": "none"
     },
     {
-      "module": "src/bp_agents/workflows/sdd/state.py",
-      "lines": 51,
-      "what_changes": "Outside ticket scope but noted: TicketPipelineState remains TypedDict while contracts were migrated to BaseModel. Inconsistency only — no elimination without migration.",
+      "module": "src/bp_agents/platform/dispatch.py",
+      "lines": 227,
+      "what_changes": "227 lines. Otel env var injection on lines 148-149, opencode config with otel_enabled on line 132. All wired. No reduction.",
       "reduction": 0,
       "dep_cost": "none"
     },
     {
-      "module": "tests/unit/contracts/test_sdd_contracts.py",
-      "lines": 20,
-      "what_changes": "4 minimal import/subclass checks — appropriate for model validation",
+      "module": "src/bp_agents/main.py",
+      "lines": 135,
+      "what_changes": "135 lines. OtelReceiver instantiated on line 116, started on line 127. All wired. No reduction.",
       "reduction": 0,
       "dep_cost": "none"
     },
     {
-      "module": "tests/unit/platform/test_contract_broker.py",
-      "lines": 199,
-      "what_changes": "Comprehensive: register (3), create_binding (3), submit (6), await_acceptance (2), invalidate (2), expiry (2) — 18 tests. No dead tests.",
+      "module": "tests/unit/platform/test_otel_receiver.py",
+      "lines": 179,
+      "what_changes": "5 tests covering POST /v1/traces, debug filter, info filter, invalid payload safety, empty body safety. Coverage matches AC-06 and AC-07. No dead tests.",
       "reduction": 0,
       "dep_cost": "none"
     },
     {
-      "module": "tests/integration/test_contract_broker_mcp.py",
-      "lines": 80,
-      "what_changes": "Single e2e test: creates real MCPServer on random port, calls submit_contract tool via HTTP, asserts response. Clean fixture pattern with _free_port.",
+      "module": "tests/unit/platform/test_dispatch.py",
+      "lines": 461,
+      "what_changes": "test_dispatch_injects_otel_env_var (lines 411-461) verifies OTEL_EXPORTER_OTLP_ENDPOINT and openTelemetry config. All tests wired. No reduction.",
+      "reduction": 0,
+      "dep_cost": "none"
+    },
+    {
+      "module": "tests/unit/platform/test_agent_config.py",
+      "lines": 84,
+      "what_changes": "test_to_opencode_json_otel_enabled and _otel_enabled_false cover both branches. No reduction.",
       "reduction": 0,
       "dep_cost": "none"
     }
   ],
+  "violations": [
+    {
+      "file_line": "src/bp_agents/platform/observability/otel_receiver.py:37",
+      "lines": 8,
+      "replacement": "Remove do_GET method and health endpoint — no caller in the codebase dispatches HTTP requests to the OTEL receiver's health endpoint.",
+      "question": 3,
+      "classification": "delete"
+    },
+    {
+      "file_line": "src/bp_agents/platform/observability/otel_receiver.py:131",
+      "lines": 2,
+      "replacement": "Remove the second hasattr(value, 'string_value') branch — when string_value is present but falsy (empty string), str(value) produces a protobuf repr that carries no actionable information. Fall through to return None instead.",
+      "question": 3,
+      "classification": "delete"
+    }
+  ],
   "review_notes": [
-    "All 21 unit tests pass. No dead code, no TypedDict remnants in scope, no eliminable duplication above the 25-line threshold.",
-    "The _result factory method (12 lines) is a net reducer of duplication across 5 call sites, not eliminable.",
-    "state.py still uses TypedDict (out of scope) — consider migrating TicketPipelineState to BaseModel in a follow-up for consistency.",
-    "Integration test runs a real MCP server on a random port — solid coverage.",
-    "action: approved — less than 25 lines of reduction available."
+    "8 modules audited, 1285 total lines, 10 eliminable lines (0.8%). Below the 25-line threshold.",
+    "Q1 (stdlib/dep already solves): _OtlpHandler uses stdlib http.server — appropriate. OTLP protobuf deserialization uses opentelemetry-proto dep — correct.",
+    "Q2 (library could solve): No library reduces lines here. A full OTEL collector would be heavier. The lightweight protobuf attribute unwrapping is intrinsic to the AnyValue wrapper.",
+    "Q3 violations: GET /health (8L) is dead — nobody calls it. _get_span_type fallback (2L) is dead code path.",
+    "Dockerfile.sandbox already installs @opentelemetry/sdk-node + related packages (line 11). Requirement met.",
+    "opencode.json config via to_opencode_json uses experimental.openTelemetry flag. OTEL_EXPORTER_OTLP_ENDPOINT injected as env var in dispatch.py:149. Both requirements met.",
+    "Best-effort error handling: _handle_traces wraps in try/except (otel_receiver.py:76-79). Invalid protobuf logged and swallowed. Test coverage: test_invalid_payload_does_not_crash and test_empty_body_does_not_crash.",
+    "Action: approved — 10 lines eliminable < 25 threshold. Minor deletions only; no structural changes requested."
   ],
   "action": "approved"
 }

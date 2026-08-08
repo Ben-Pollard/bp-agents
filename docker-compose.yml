@@ -123,7 +123,7 @@ services:
   orchestrator:
     build: .
     environment:
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      BP_LOG_LEVEL: ${BP_LOG_LEVEL:-info}
       BP_TARGET_REPO_PATH: ${BP_TARGET_REPO_PATH:-/data/repos/default-project}
       BP_SANDBOX_IMAGE: ${BP_SANDBOX_IMAGE:-symphony-agent:latest}
       BP_SKILLS_PATH: ${BP_SKILLS_PATH:-/app/.agents/skills}

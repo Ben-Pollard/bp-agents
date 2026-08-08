@@ -1,12 +1,12 @@
 {
-  "spec_compliance": false,
+  "spec_compliance": true,
   "code_quality": {
     "deep-modules.md": true,
     "interface-design.md": true,
-    "refactoring.md": false,
+    "refactoring.md": true,
     "declarative-over-procedural.md": true,
     "SOLID": true,
-    "DRY": false,
+    "DRY": true,
     "YAGNI": true
   },
   "test_quality": {
@@ -14,46 +14,22 @@
     "interface-design.md": true,
     "mocking.md": true
   },
-  "documentation": false,
-  "operational": false,
+  "documentation": true,
+  "operational": true,
   "violations": [
     {
-      "principle": "Spec Compliance — OtelReceiver not wired into main.py",
-      "file": "src/bp_agents/main.py",
-      "issue": "OtelReceiver is never imported, instantiated, or started. The OTLP/HTTP server never spins up. AC-06 and AC-07 cannot be satisfied in the running system — the entire observability pipeline is dead code."
-    },
-    {
-      "principle": "Spec Compliance — No caller passes otel_port to dispatch()",
-      "file": "src/bp_agents/main.py",
-      "issue": "dispatch() accepts otel_port and injects OTEL_EXPORTER_OTLP_ENDPOINT when provided, but no code in main.py (or anywhere) calls dispatch(otel_port=...). The OTEL config setup and env var injection are unreachable."
-    },
-    {
-      "principle": "Spec Compliance — Environment variable mismatch",
-      "file": "src/bp_agents/platform/runner.py:22",
-      "issue": "runner.py:setup_logging() reads LOG_LEVEL but the ticket specifies BP_LOG_LEVEL. Also, OtelReceiver's log_level is never connected to any environment variable — no code reads BP_LOG_LEVEL and passes it to OtelReceiver(log_level=...). The receiver always defaults to 'info', making debug-level span emission impossible without modifying source."
-    },
-    {
-      "principle": "Operational — Sandbox image missing OTEL SDK dependencies",
-      "file": "Dockerfile.sandbox",
-      "issue": "Dockerfile.sandbox only installs opencode-ai via npm. @opentelemetry/sdk-node and related packages are absent. opencode's experimental.openTelemetry: true cannot emit OTEL spans without the SDK present in bun's environment. Identified as an open risk in the gap analysis but not addressed."
-    },
-    {
-      "principle": "DRY — Dead code in _get_span_type",
-      "file": "src/bp_agents/platform/observability/otel_receiver.py:133-137",
-      "issue": "The second loop over attributes checking for key==\"type\" is dead code. The first loop (lines 125-132) already handles key in (\"event.type\", \"type\", \"gen_ai.event.type\"). The second loop can never return a value the first wouldn't return first."
-    },
-    {
-      "principle": "Documentation — No README update for OTEL",
-      "file": "README.md",
-      "issue": "README does not mention BP_LOG_LEVEL, the OTEL receiver, or that the sandbox image needs OTEL SDK npm packages. A human cannot follow the README to observe AC-06 or AC-07 behavior."
+      "principle": "Graceful shutdown — receiver.stop() never called",
+      "file": "src/bp_agents/main.py:118-127",
+      "issue": "OtelReceiver.start() is awaited (not a task) inside the TaskGroup. When the TaskGroup exits, otel_receiver.stop() is never invoked. The daemon thread makes this safe at process exit, but graceful shutdown is lost. Acceptable for best-effort — not a blocker."
     }
   ],
   "review_notes": [
-    "OtelReceiver class and unit tests are well-structured — good deep module with small interface (start/stop) and thorough test coverage.",
-    "Test mocking is appropriate (system boundaries: sandbox, OpenCodeClient). Unit tests exercise OtelReceiver through real HTTP — integration-style testing at the unit level.",
-    "dispatch.py changes for OTEL env var injection and opencode.json config are correct in isolation but unreachable from the running system.",
-    "All 173 unit tests pass. Ruff lint passes with zero issues.",
-    "No integration tests exist for the OTEL pipeline end-to-end (receiver → log level filtering → stdout), but the issue's Testing Decisions section says 'None specific', so this is not a spec violation."
+    "All 6 prior review violations fixed: OtelReceiver wired into main.py, otel_port threaded through graph→TddNode→dispatch, BP_LOG_LEVEL replaces LOG_LEVEL, OTEL SDK packages in Dockerfile.sandbox, dead _get_span_type loop removed, README updated.",
+    "All 25 relevant unit tests pass (5 OTEL receiver + 12 dispatch + 8 agent_config). Test_dispatch_injects_otel_env_var and test_to_opencode_json_otel_enabled confirm OTEL wiring in dispatch and config.",
+    "1 integration test fails (test_dispatch_say_hello_against_real_sandbox) — pre-existing Docker/gVisor infrastructure issue, not caused by OTEL changes.",
+    "OtelReceiver is a good deep module: 3 public methods, all OTLP parsing and filtering hidden inside. Tests exercise through real HTTP — integration-style at the unit level.",
+    "No spec violations. All AC-06 and AC-07 requirements met at code level. README documents BP_LOG_LEVEL, BP_OTEL_PORT, and the observability pipeline.",
+    "Graceful shutdown note is minor (daemon thread) and consistent with the ticket's best-effort requirement."
   ],
-  "action": "changes_requested"
+  "action": "approved"
 }

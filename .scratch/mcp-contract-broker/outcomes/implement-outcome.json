@@ -1,4 +1,4 @@
 {
   "status": "DONE",
-  "summary": "Fixed all 6 review violations: (1) wired OtelReceiver into main.py with start/stop in TaskGroup; (2) passed otel_port from main.py through build_ticket_pipeline and TddNode to dispatch(); (3) changed LOG_LEVEL to BP_LOG_LEVEL in runner.py and wired BP_LOG_LEVEL env var to OtelReceiver(log_level=...); (4) added @opentelemetry/sdk-node packages to Dockerfile.sandbox; (5) removed dead loop in _get_span_type; (6) updated README with OTEL receiver docs and env var table. All 173 unit tests pass, ruff lint clean."
+  "summary": "Fixed 2 issues from QA: (1) Changed LOG_LEVEL to BP_LOG_LEVEL in docker-compose.yml orchestrator service so BP_LOG_LEVEL=debug from .env is actually forwarded to the container. (2) Added 9 integration tests under tests/integration/test_otel_pipeline.py covering configurable port start, POST /v1/traces acceptance, debug-level logging of all span types, info-level filtering to session events only, invalid-payload best-effort handling, empty body handling, start/stop idempotency, 404 on wrong path, and env-var wiring verification. All 202 tests pass, ruff lint clean."
 }
