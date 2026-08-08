@@ -7,7 +7,10 @@ import pytest
 from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
 
-pytestmark = pytest.mark.e2e
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.usefixtures("egress_compose"),
+]
 
 
 _IMAGE = "python:3.12-slim"
@@ -85,8 +88,8 @@ async def test_sandbox_git_commands_fail_in_real_container() -> None:
 
 
 @pytest.mark.skipif(
-    not (_docker_available() and _proxy_available() and _runsc_available()),
-    reason="Docker, egress-proxy, or runsc not available",
+    not (_docker_available() and _runsc_available()),
+    reason="Docker or runsc not available",
 )
 @pytest.mark.asyncio
 async def test_sandbox_can_reach_pypi_through_proxy() -> None:
@@ -114,8 +117,8 @@ async def test_sandbox_can_reach_pypi_through_proxy() -> None:
 
 
 @pytest.mark.skipif(
-    not (_docker_available() and _proxy_available() and _runsc_available()),
-    reason="Docker, egress-proxy, or runsc not available",
+    not (_docker_available() and _runsc_available()),
+    reason="Docker or runsc not available",
 )
 @pytest.mark.asyncio
 async def test_sandbox_cannot_reach_arbitrary_internet() -> None:
