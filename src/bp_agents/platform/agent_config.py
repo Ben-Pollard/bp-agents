@@ -26,11 +26,6 @@ def to_opencode_json(
         "permission": config.permissions,
         "mcp": {},
     }
-    for mcp_name, enabled in config.mcps.items():
-        if enabled and mcp_name in mcp_defs:
-            merged = dict(mcp_defs[mcp_name])
-            merged["enabled"] = True
-            result["mcp"][mcp_name] = merged
     if skills_path and Path(skills_path).is_dir():
         result["skills"] = [_SANDBOX_SKILLS_MOUNT]
     return result

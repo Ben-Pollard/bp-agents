@@ -2,7 +2,9 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -10,6 +12,9 @@ from bp_agents.platform.agent_client import OpenCodeClient
 from bp_agents.platform.agent_config import AgentConfig, to_opencode_json
 from bp_agents.platform.sandbox.base import Sandbox
 from bp_agents.platform.sandbox.config import SandboxConfig
+
+if TYPE_CHECKING:
+    from bp_agents.platform.mcp.contract_broker import ContractBroker
 
 CREDENTIAL_KEYS = {
     "OPENAI_API_KEY",
@@ -34,7 +39,6 @@ PROVIDER_DEFINITIONS: dict = {
     },
 }
 
-MCP_DEFS: dict = {}
 
 OUTCOME_FILENAME = "outcome.json"
 HEALTH_CHECK_RETRIES = 30
@@ -85,6 +89,7 @@ async def dispatch(
     outcome_path: str,
     api_key: str,
     opencode_client: OpenCodeClient | None = None,
+    broker: "ContractBroker | None" = None,
 ) -> dict:
     """Full agent lifecycle.
 
@@ -119,12 +124,24 @@ async def dispatch(
         )
 
     opencode_config = to_opencode_json(
-        config, PROVIDER_DEFINITIONS, MCP_DEFS, skills_path=skills_path
+        config, PROVIDER_DEFINITIONS, {}, skills_path=skills_path
     )
     opencode_path = os.path.join(workspace, "opencode.json")
     with open(opencode_path, "w") as f:
         json.dump(opencode_config, f, indent=2)
     logger.debug("wrote %s config=%s", opencode_path, json.dumps(opencode_config))
+
+    broker_token: str | None = None
+    if broker is not None:
+        run_id = secrets.token_urlsafe(16)
+        broker_token = broker.create_binding("sdd", skill, run_id, max_attempts=3)
+
+    env = {
+        **{k: v for k, v in sandbox_config.env.items() if k not in CREDENTIAL_KEYS},
+        "outcome_path": outcome_path,
+    }
+    if broker_token is not None:
+        env["CONTRACT_BROKER_TOKEN"] = broker_token
 
     cfg = SandboxConfig(
         image=sandbox_config.image,
@@ -132,10 +149,7 @@ async def dispatch(
         skills_path=sandbox_config.skills_path,
         runtime=sandbox_config.runtime,
         workspace_mode="rw",
-        env={
-            **{k: v for k, v in sandbox_config.env.items() if k not in CREDENTIAL_KEYS},
-            "outcome_path": outcome_path,
-        },
+        env=env,
         timeout_seconds=sandbox_config.timeout_seconds,
         mem_limit=sandbox_config.mem_limit,
         cpu_count=sandbox_config.cpu_count,
@@ -188,6 +202,9 @@ async def dispatch(
         with open(outcome_host_path) as f:
             outcome = json.load(f)
             logger.debug("read outcome: %s", json.dumps(outcome))
+
+        if broker is not None and broker_token is not None:
+            broker.submit(broker_token, outcome)
 
         return outcome
     finally:

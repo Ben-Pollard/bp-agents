@@ -1,46 +1,81 @@
 {
-  "modules_audited": 5,
-  "total_lines": 801,
-  "lines_eliminable": 39,
+  "modules_audited": 14,
+  "total_lines": 2287,
+  "lines_eliminable": 40,
   "reduction_table": [
     {
-      "module": "src/bp_agents/workflows/sdd/contracts.py",
-      "lines": 59,
-      "what_changes": "Delete unused Ticket dataclass and its imports (dataclass, field, datetime). Ticket is never imported by any source file — only TicketState and the Pydantic models are consumed.",
-      "reduction": 12,
+      "module": "src/bp_agents/workflows/sdd/nodes/tdd.py",
+      "lines": 311,
+      "what_changes": "Inline validate_tdd_output() — 2-line pass-through wrapper to TddOutput.model_validate() called exactly once",
+      "reduction": 2,
+      "dep_cost": "none"
+    },
+    {
+      "module": "src/bp_agents/platform/dispatch.py",
+      "lines": 203,
+      "what_changes": "Remove MCP_DEFS empty dict — always unused, to_opencode_json receives {} with no MCPs configured anywhere",
+      "reduction": 1,
+      "dep_cost": "none"
+    },
+    {
+      "module": "src/bp_agents/platform/agent_config.py",
+      "lines": 36,
+      "what_changes": "Remove dead MCP merging loop — config.mcps is always empty, mcp_defs always {}, loop never executes",
+      "reduction": 5,
       "dep_cost": "none"
     },
     {
       "module": "src/bp_agents/platform/mcp/contract_broker.py",
-      "lines": 185,
-      "what_changes": "Wire create_mcp_server() into orchestrator/main.py startup flow. Currently only called from integration test. Function and MCPServer import are dead in production but match AC requirement 'FastMCP server exposes submit_contract tool via HTTP'.",
-      "reduction": 27,
+      "lines": 190,
+      "what_changes": "Extract _result() helper to eliminate 5 identical dict-structure return blocks in submit(); ~30 lines become ~5",
+      "reduction": 30,
+      "dep_cost": "none"
+    },
+    {
+      "module": "tests/unit/workflows/test_sdd_pipeline.py",
+      "lines": 93,
+      "what_changes": "Extract _make_state() helper to eliminate duplicated TicketPipelineState dicts across tests",
+      "reduction": 2,
       "dep_cost": "none"
     }
   ],
   "violations": [
     {
-      "file_line": "src/bp_agents/workflows/sdd/contracts.py:9",
-      "lines": 10,
-      "replacement": "Delete unused class Ticket (line 9-18) and its supporting imports (line 1: from dataclasses import dataclass, field; line 2: from datetime import datetime). TicketState and pydantic models remain.",
+      "file_line": "src/bp_agents/workflows/sdd/nodes/tdd.py:38",
+      "lines": 2,
+      "replacement": "Inline TddOutput.model_validate(outcome) at call site line 158",
       "question": 3,
       "classification": "delete"
     },
     {
-      "file_line": "src/bp_agents/platform/mcp/contract_broker.py:160",
-      "lines": 26,
-      "replacement": "Wire create_mcp_server() into orchestrator/main.py: instantiate broker, register SDD stage schemas, call create_mcp_server(), and run via run_streamable_http_async on configurable port.",
+      "file_line": "src/bp_agents/platform/dispatch.py:37",
+      "lines": 1,
+      "replacement": "Remove MCP_DEFS; pass {} directly to to_opencode_json",
       "question": 3,
-      "classification": "wire-in"
+      "classification": "delete"
     },
     {
-      "file_line": "src/bp_agents/platform/mcp/contract_broker.py:6",
-      "lines": 1,
-      "replacement": "Import MCPServer only when create_mcp_server is wired in. Can be moved inside function or behind TYPE_CHECKING if deferring the wire-in.",
+      "file_line": "src/bp_agents/platform/agent_config.py:29",
+      "lines": 5,
+      "replacement": "Remove dead loop — no MCPs configured in any skill config",
+      "question": 3,
+      "classification": "delete"
+    },
+    {
+      "file_line": "src/bp_agents/platform/mcp/contract_broker.py:86",
+      "lines": 30,
+      "replacement": "Extract _result(accepted, terminal, contract, errors, attempts_remaining) helper, reduce 5 return blocks to 1-liners each",
+      "question": 3,
+      "classification": "delete"
+    },
+    {
+      "file_line": "src/bp_agents/platform/mcp/contract_broker.py:163",
+      "lines": 0,
+      "replacement": "Wire ContractBroker bindings into dispatch() — create_binding before sandbox, submit after outcome read. Currently broker runs MCP server but no dispatch flow creates bindings or calls submit_contract",
       "question": 3,
       "classification": "wire-in"
     }
   ],
-  "review_notes": "Reduction audit of 5 src modules (801 lines). Two violations found: (1) Ticket dataclass in contracts.py is dead code — never imported by any source file, only TicketState and Pydantic models are consumed. (2) create_mcp_server() in contract_broker.py implements the FastMCP tool requirement but is only called from the integration test, never wired into orchestrator/main.py. Total 39 eliminable lines across 2 modules, all Q3 (unnecessary). No Q1 or Q2 violations found — stdlib/library coverage is appropriate; Pydantic for contract schemas, dataclass for internal state, asyncio.Event for lock-on-success are all correct choices.",
-  "action": "changes-requested"
+  "review_notes": "14 modules audited (2287 lines). 40 lines eliminable (~1.7%). Main savings from extracting a _result() helper in contract_broker.py (30 lines) to replace 5 identical return-dict blocks. Minor wins: inlining validate_tdd_output (2), removing dead MCP_DEFS (1) and dead MCP loop (5). One wire-in violation: ContractBroker MCP server runs but dispatch flow never creates bindings or calls submit_contract — needs integration at dispatch() call site. All ACs met for this ticket (broker functions in isolation). spec_compliance=true because the ticket scopes to 'verifiable in isolation via unit tests and FastMCP integration test'.",
+  "action": "changes_requested"
 }

@@ -52,31 +52,6 @@ def test_to_opencode_json_includes_permissions() -> None:
     assert result["permission"]["bash"] == {"sudo *": "deny", "*": "allow"}
 
 
-def test_to_opencode_json_mcp_toggle_enabled() -> None:
-    config = _config(mcps={"playwright": True})
-    mcp_defs = {
-        "playwright": {
-            "type": "local",
-            "command": ["npx", "@playwright/mcp@latest"],
-        }
-    }
-    result = to_opencode_json(config, {}, mcp_defs)
-    assert result["mcp"]["playwright"]["type"] == "local"
-    assert result["mcp"]["playwright"]["enabled"] is True
-
-
-def test_to_opencode_json_mcp_disabled_is_omitted() -> None:
-    config = _config(mcps={"playwright": False})
-    mcp_defs = {
-        "playwright": {
-            "type": "local",
-            "command": ["npx", "@playwright/mcp@latest"],
-        }
-    }
-    result = to_opencode_json(config, {}, mcp_defs)
-    assert "playwright" not in result["mcp"]
-
-
 def test_to_opencode_json_skills_path_adds_skills_array() -> None:
     import tempfile
 

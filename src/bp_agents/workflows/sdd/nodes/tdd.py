@@ -35,10 +35,6 @@ def _run_git(repo_path: str, *args: str) -> None:
     )
 
 
-def validate_tdd_output(data: dict) -> TddOutput:
-    return TddOutput.model_validate(data)
-
-
 def build_input_contract(
     ticket_id: str, ticket_body: str, context: dict | None = None
 ) -> dict:
@@ -155,7 +151,7 @@ class TddNode:
                 }
 
             try:
-                tdd_output = validate_tdd_output(outcome)
+                tdd_output = TddOutput.model_validate(outcome)
             except ValueError as e:
                 logger.error("ticket %s: invalid outcome: %s", ticket_id, e)
                 return {

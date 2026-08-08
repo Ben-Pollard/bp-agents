@@ -1,6 +1,6 @@
 {
   "status": "DONE",
-  "summary": "Deleted unused Ticket class, moved MCPServer import behind TYPE_CHECKING, wired create_mcp_server into orchestrator main.py with SDD stage schemas registered on configurable port",
-  "test_results": {"passed": 22, "failed": 0, "skipped": 0},
+  "summary": "Applied 5 reduction audit fixes: inlined validate_tdd_output, removed dead MCP_DEFS, removed dead MCP loop in agent_config.py, extracted _result helper in ContractBroker, wired ContractBroker into dispatch()",
+  "test_results": {"passed": 165, "failed": 0, "skipped": 0},
   "concerns": []
 }

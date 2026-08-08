@@ -80,59 +80,76 @@ class ContractBroker:
             return None
         return binding
 
+    @staticmethod
+    def _result(
+        *,
+        accepted: bool,
+        terminal: bool,
+        contract: dict | None,
+        errors: list | None,
+        attempts_remaining: int | None,
+    ) -> dict:
+        return {
+            "accepted": accepted,
+            "terminal": terminal,
+            "contract": contract,
+            "errors": errors,
+            "attempts_remaining": attempts_remaining,
+        }
+
     def submit(self, token: str, payload: dict) -> dict:
         binding = self._get_binding(token)
         if binding is None:
-            return {
-                "accepted": False,
-                "terminal": True,
-                "contract": None,
-                "errors": [{"field": "_token", "message": "unknown or expired token"}],
-                "attempts_remaining": None,
-            }
+            return self._result(
+                accepted=False,
+                terminal=True,
+                contract=None,
+                errors=[{"field": "_token", "message": "unknown or expired token"}],
+                attempts_remaining=None,
+            )
         if binding.accepted:
-            return {
-                "accepted": False,
-                "terminal": True,
-                "contract": None,
-                "errors": [{"field": "_binding", "message": "already submitted"}],
-                "attempts_remaining": None,
-            }
+            return self._result(
+                accepted=False,
+                terminal=True,
+                contract=None,
+                errors=[{"field": "_binding", "message": "already submitted"}],
+                attempts_remaining=None,
+            )
         binding.attempts += 1
         remaining = binding.max_attempts - binding.attempts
         try:
             validated = binding.model.model_validate(payload)
         except ValidationError as e:
             if remaining <= 0:
-                return {
-                    "accepted": False,
-                    "terminal": True,
-                    "contract": None,
-                    "errors": [
+                return self._result(
+                    accepted=False,
+                    terminal=True,
+                    contract=None,
+                    errors=[
                         {"field": "_max_attempts", "message": "max attempts exceeded"}
                     ],
-                    "attempts_remaining": 0,
-                }
-            return {
-                "accepted": False,
-                "terminal": False,
-                "contract": None,
-                "errors": [
+                    attempts_remaining=0,
+                )
+            return self._result(
+                accepted=False,
+                terminal=False,
+                contract=None,
+                errors=[
                     {"field": str(err["loc"]), "message": err["msg"]}
                     for err in e.errors()
                 ],
-                "attempts_remaining": remaining,
-            }
+                attempts_remaining=remaining,
+            )
         binding.accepted = True
         binding.accepted_contract = validated.model_dump()
         binding.event.set()
-        return {
-            "accepted": True,
-            "terminal": False,
-            "contract": validated.model_dump(),
-            "errors": None,
-            "attempts_remaining": remaining,
-        }
+        return self._result(
+            accepted=True,
+            terminal=False,
+            contract=validated.model_dump(),
+            errors=None,
+            attempts_remaining=remaining,
+        )
 
     async def await_acceptance(self, token: str) -> AcceptedContract:
         binding = self._bindings.get(token)

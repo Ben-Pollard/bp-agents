@@ -7,10 +7,10 @@ import httpx
 import pytest
 
 from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
+from bp_agents.workflows.sdd.contracts import TddOutput
 from bp_agents.workflows.sdd.nodes.tdd import (
     TddNode,
     build_input_contract,
-    validate_tdd_output,
 )
 from bp_agents.workflows.sdd.state import TicketPipelineState
 
@@ -41,7 +41,7 @@ class TestValidateTddOutput:
             "test_results": {"passed": 5, "failed": 0, "skipped": 0},
             "concerns": [],
         }
-        result = validate_tdd_output(data)
+        result = TddOutput.model_validate(data)
         assert result.status == "DONE"
 
     def test_valid_done_with_concerns(self) -> None:
@@ -51,7 +51,7 @@ class TestValidateTddOutput:
             "test_results": {"passed": 5, "failed": 0, "skipped": 0},
             "concerns": ["Performance needs improvement"],
         }
-        result = validate_tdd_output(data)
+        result = TddOutput.model_validate(data)
         assert result.status == "DONE_WITH_CONCERNS"
 
     def test_valid_blocked(self) -> None:
@@ -61,7 +61,7 @@ class TestValidateTddOutput:
             "test_results": {"passed": 0, "failed": 0, "skipped": 0},
             "concerns": ["Module utils.validators not yet implemented"],
         }
-        result = validate_tdd_output(data)
+        result = TddOutput.model_validate(data)
         assert result.status == "BLOCKED"
 
     def test_valid_fail(self) -> None:
@@ -71,14 +71,14 @@ class TestValidateTddOutput:
             "test_results": {"passed": 0, "failed": 0, "skipped": 0},
             "concerns": ["Network timeout"],
         }
-        result = validate_tdd_output(data)
+        result = TddOutput.model_validate(data)
         assert result.status == "FAIL"
 
     def test_missing_field_raises(self) -> None:
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="Field required"):
-            validate_tdd_output({"status": "DONE"})
+            TddOutput.model_validate({"status": "DONE"})
 
     def test_invalid_status_raises(self) -> None:
         from pydantic import ValidationError
@@ -90,7 +90,7 @@ class TestValidateTddOutput:
             "concerns": [],
         }
         with pytest.raises(ValidationError, match="Input should be"):
-            validate_tdd_output(data)
+            TddOutput.model_validate(data)
 
 
 class TestBuildInputContract:
