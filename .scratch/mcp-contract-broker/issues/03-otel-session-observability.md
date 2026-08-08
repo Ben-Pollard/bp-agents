@@ -1,6 +1,6 @@
 # 03 — OTEL Session Observability
 
-Status: ready-for-agent
+Status: in-progress
 
 ## Source Documents
 
