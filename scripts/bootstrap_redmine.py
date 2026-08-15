@@ -23,6 +23,8 @@ import time
 
 import httpx
 
+from bp_agents.workflows.sdd.contracts import TicketState
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("bootstrap_redmine")
 
@@ -109,11 +111,9 @@ def _enable_api_and_create_statuses() -> None:
         workdir="/usr/src/redmine",
     )
 
-    from bp_agents.workflows.sdd.contracts import TicketState
-
     statuses_lines = ["existing = IssueStatus.all.map(&:name).to_set"]
     for s in TicketState:
-        is_closed = "true" if s.value in ("done", "blocked") else "false"
+        is_closed = "true" if s.value == "done" else "false"
         statuses_lines.append(
             f"unless existing.include?('{s.value}'); "
             f"IssueStatus.create!(name: '{s.value}', is_closed: {is_closed}); "
@@ -127,7 +127,97 @@ def _enable_api_and_create_statuses() -> None:
         ["bundle", "exec", "rails", "runner", statuses_code],
         workdir="/usr/src/redmine",
     )
-    logger.info("Settings enabled and statuses created via Rails runner")
+
+    transitions_code = _build_transitions_code(list(TicketState), BP_PROJECT_ID)
+    container.exec_run(
+        ["bundle", "exec", "rails", "runner", transitions_code],
+        workdir="/usr/src/redmine",
+    )
+
+    membership_code = _build_membership_code(BP_PROJECT_ID, ADMIN_LOGIN)
+    container.exec_run(
+        ["bundle", "exec", "rails", "runner", membership_code],
+        workdir="/usr/src/redmine",
+    )
+    logger.info(
+        "Settings enabled, statuses created, transitions configured via Rails runner"
+    )
+
+
+def _build_transitions_code(states: list[TicketState], project_id: str) -> str:
+    transition_pairs = [
+        ("ready", "implementing"),
+        ("implementing", "awaiting_review"),
+        ("awaiting_review", "reviewing"),
+        ("reviewing", "awaiting_verification"),
+        ("reviewing", "awaiting_revision"),
+        ("awaiting_revision", "revising"),
+        ("revising", "awaiting_verification"),
+        ("awaiting_verification", "verifying"),
+        ("verifying", "awaiting_approval"),
+        ("verifying", "awaiting_revision"),
+        ("awaiting_approval", "done"),
+    ]
+    for s in states:
+        if s.value not in ("done", "blocked"):
+            transition_pairs.append((s.value, "blocked"))
+    transition_pairs.append(("blocked", "ready"))
+    reverse_pairs = [
+        ("implementing", "ready"),
+        ("awaiting_review", "implementing"),
+        ("reviewing", "awaiting_review"),
+        ("awaiting_revision", "reviewing"),
+        ("revising", "awaiting_revision"),
+        ("awaiting_verification", "revising"),
+        ("verifying", "awaiting_verification"),
+        ("awaiting_approval", "verifying"),
+        ("done", "awaiting_approval"),
+    ]
+    transition_pairs.extend(reverse_pairs)
+
+    lines = [
+        "statuses = IssueStatus.all.index_by(&:name)",
+        "tracker = Tracker.find_by(name: 'Task') || Tracker.first",
+        "role = Role.find_by(name: 'SDD Agent') || Role.first",
+    ]
+    for from_name, to_name in transition_pairs:
+        lines.append(
+            f"if statuses['{from_name}'] && statuses['{to_name}']; "
+            f"WorkflowTransition.create!("
+            f"tracker_id: tracker&.id, "
+            f"role_id: role&.id, "
+            f"old_status_id: statuses['{from_name}'].id, "
+            f"new_status_id: statuses['{to_name}'].id"
+            f"); end"
+        )
+    lines.append("puts 'TRANSITIONS_DONE:' + WorkflowTransition.count.to_s")
+    return "; ".join(lines)
+
+
+def _build_membership_code(project_identifier: str, admin_login: str) -> str:
+    return "; ".join(
+        [
+            "project = Project.find_by(identifier: '"
+            + project_identifier
+            + "') or raise 'project not found'",
+            "admin = User.find_by_login('"
+            + admin_login
+            + "') or raise 'admin not found'",
+            "role = Role.find_by(name: 'SDD Agent') or Role.create!("
+            "name: 'SDD Agent', "
+            "position: Role.maximum(:position).to_i + 1, "
+            "assignable: true, "
+            "issues_visibility: 'all', "
+            "permissions: Role.find_by(name: 'Manager')&.permissions || ["
+            ":view_issues, :add_issues, :edit_issues, :manage_issue_relations, "
+            ":add_issue_notes, :set_issues_private, :set_notes_private, "
+            ":view_private_notes, :delete_issues, :manage_subtasks, :move_issues"
+            "])",
+            "existing = Member.find_by(project: project, user: admin)",
+            "if existing.nil?; Member.create!(project: project, user: admin, roles: [role]); end",
+            "puts 'MEMBER_DONE:' + admin.login + '@' + project.identifier",
+        ]
+    )
 
 
 def _prepare_admin_via_rails() -> str:

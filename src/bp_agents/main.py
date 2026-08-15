@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import socket
 
 from dotenv import load_dotenv
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -38,6 +39,19 @@ SANDBOX_RUNTIME = os.getenv("BP_SANDBOX_RUNTIME", "runsc")
 MCP_PORT = int(os.getenv("BP_MCP_PORT", "8001"))
 BP_LOG_LEVEL = os.getenv("BP_LOG_LEVEL", "info")
 BP_OTEL_PORT = int(os.getenv("BP_OTEL_PORT", "4318"))
+
+
+def _sandbox_net_ip(service_name: str) -> str:
+    import docker
+
+    client = docker.from_env()
+    filters = {"label": f"com.docker.compose.service={service_name}"}
+    containers = client.containers.list(filters=filters)
+    if containers:
+        nets = containers[0].attrs["NetworkSettings"]["Networks"]
+        if "sandbox_net" in nets:
+            return nets["sandbox_net"]["IPAddress"]
+    return socket.gethostbyname(service_name)
 
 
 def _build_sdd_state(ticket: dict) -> tuple[dict, str]:
@@ -81,10 +95,13 @@ async def main() -> None:
             if not os.path.isabs(SKILLS_PATH)
             else SKILLS_PATH,
             runtime=SANDBOX_RUNTIME,
-            network="bp_agents",
-            http_proxy="http://172.20.0.10:8080",
-            https_proxy="http://172.20.0.10:8080",
+            network="sandbox_net",
+            http_proxy="http://egress-proxy:8080",
+            https_proxy="http://egress-proxy:8080",
             dns_servers=["8.8.8.8"],
+            extra_hosts={
+                h: _sandbox_net_ip(h) for h in ("orchestrator", "egress-proxy")
+            },
             env=sandbox_env,
             command=[
                 "opencode",
@@ -98,6 +115,12 @@ async def main() -> None:
         )
 
     async with AsyncSqliteSaver.from_conn_string(PIPELINE_DB_PATH) as checkpointer:
+        broker = ContractBroker()
+        broker.register("sdd", "tdd", TddOutput)
+        broker.register("sdd", "code_review", ReviewOutput)
+        broker.register("sdd", "revision", RevisionOutput)
+        mcp = create_mcp_server(broker)
+
         pipeline = build_ticket_pipeline(
             checkpointer=checkpointer,
             tracker=tracker,
@@ -108,6 +131,8 @@ async def main() -> None:
             if not os.path.isabs(SKILLS_PATH)
             else SKILLS_PATH,
             otel_port=BP_OTEL_PORT if sandbox_config is not None else None,
+            broker=broker,
+            mcp_port=MCP_PORT,
         )
 
         poller = TrackerPoller(
@@ -116,18 +141,12 @@ async def main() -> None:
         runner = GraphRunner()
         runner.register("sdd", pipeline, poller)
 
-        broker = ContractBroker()
-        broker.register("sdd", "tdd", TddOutput)
-        broker.register("sdd", "code_review", ReviewOutput)
-        broker.register("sdd", "revision", RevisionOutput)
-        mcp = create_mcp_server(broker)
-
         otel_receiver = OtelReceiver(log_level=BP_LOG_LEVEL)
 
         async with asyncio.TaskGroup() as tg:
             tg.create_task(
                 mcp.run_streamable_http_async(
-                    host="127.0.0.1",
+                    host="0.0.0.0",
                     port=MCP_PORT,
                     json_response=True,
                     stateless_http=True,

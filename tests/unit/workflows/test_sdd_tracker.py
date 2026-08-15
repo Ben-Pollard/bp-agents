@@ -135,8 +135,11 @@ async def test_ensure_statuses_uses_existing() -> None:
 
     await tracker.ensure_statuses()
 
-    assert len(handler_calls) == 1
+    # 1 GET to list + 1 PUT to close "done" (missing is_closed in response)
+    assert len(handler_calls) == 2
     assert handler_calls[0]["method"] == "GET"
+    assert handler_calls[1]["method"] == "PUT"
+    assert "/issue_statuses/10.json" in handler_calls[1]["url"]
     assert tracker._status_map["ready"] == 1
     assert tracker._status_map["blocked"] == 11
     assert tracker._reverse_map[1] == "ready"

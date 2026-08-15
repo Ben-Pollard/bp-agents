@@ -10,6 +10,10 @@ if TYPE_CHECKING:
     from mcp.server import MCPServer
 
 
+class ContractNotFulfilledError(RuntimeError):
+    """Broker configured but no valid contract was accepted before the session ended."""
+
+
 @dataclass
 class AcceptedContract:
     workflow: str
@@ -169,6 +173,36 @@ class ContractBroker:
             run_id=binding.run_id,
             contract=binding.accepted_contract or {},
         )
+
+    def check_acceptance(self, token: str) -> AcceptedContract | None:
+        binding = self._bindings.get(token)
+        if binding is None:
+            return None
+        if binding.invalidated:
+            return None
+        if not binding.accepted or binding.accepted_contract is None:
+            return None
+        return AcceptedContract(
+            workflow=binding.workflow,
+            stage=binding.stage,
+            run_id=binding.run_id,
+            contract=binding.accepted_contract,
+        )
+
+    def submission_status(self, token: str) -> str | None:
+        binding = self._bindings.get(token)
+        if binding is None:
+            return None
+        if binding.invalidated:
+            return None
+        elapsed = time.time() - binding.created_at
+        if elapsed > binding.ttl_seconds:
+            return None
+        if binding.accepted:
+            return "accepted"
+        if binding.attempts >= binding.max_attempts:
+            return "exhausted"
+        return "pending"
 
     def invalidate(self, token: str) -> None:
         binding = self._bindings.pop(token, None)

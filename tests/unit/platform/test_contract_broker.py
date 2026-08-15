@@ -197,3 +197,49 @@ class TestExpiry:
         )
         with pytest.raises(ValueError, match="expired"):
             await registered_broker.await_acceptance(token)
+
+
+class TestSubmissionStatus:
+    def test_returns_accepted(self, registered_broker: ContractBroker) -> None:
+        token = registered_broker.create_binding("sdd", "tdd", "run-s1")
+        registered_broker.submit(
+            token,
+            {
+                "status": "DONE",
+                "summary": "ok",
+                "results": {"passed": 1},
+            },
+        )
+        assert registered_broker.submission_status(token) == "accepted"
+
+    def test_returns_pending_when_no_submission(
+        self, registered_broker: ContractBroker
+    ) -> None:
+        token = registered_broker.create_binding("sdd", "tdd", "run-s2")
+        assert registered_broker.submission_status(token) == "pending"
+
+    def test_returns_exhausted(self, registered_broker: ContractBroker) -> None:
+        token = registered_broker.create_binding("sdd", "tdd", "run-s3", max_attempts=2)
+        registered_broker.submit(token, {"status": "DONE"})
+        registered_broker.submit(token, {"status": "DONE"})
+        assert registered_broker.submission_status(token) == "exhausted"
+
+    def test_returns_none_for_unknown_token(
+        self, registered_broker: ContractBroker
+    ) -> None:
+        assert registered_broker.submission_status("no-such-token") is None
+
+    def test_returns_none_for_invalidated_token(
+        self, registered_broker: ContractBroker
+    ) -> None:
+        token = registered_broker.create_binding("sdd", "tdd", "run-s4")
+        registered_broker.invalidate(token)
+        assert registered_broker.submission_status(token) is None
+
+    def test_returns_none_for_expired_token(
+        self, registered_broker: ContractBroker
+    ) -> None:
+        token = registered_broker.create_binding(
+            "sdd", "tdd", "run-s5", ttl_seconds=-1.0
+        )
+        assert registered_broker.submission_status(token) is None

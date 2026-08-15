@@ -1,8 +1,6 @@
 import logging
-import os
 
 import httpx
-import psycopg
 
 from bp_agents.platform.tracker import Tracker
 from bp_agents.workflows.sdd.contracts import TicketState
@@ -16,16 +14,11 @@ class RedmineTracker(Tracker):
         base_url: str,
         api_key: str,
         client: httpx.AsyncClient | None = None,
-        db_url: str | None = None,
     ) -> None:
         self.base_url = base_url
         self.api_key = api_key
         self._status_map: dict[str, int] = {}
         self._reverse_map: dict[int, str] = {}
-        self._db_url = db_url or os.getenv(
-            "REDMINE_DB_URL",
-            "postgresql://redmine:redmine_dev@redmine-db:5432/redmine",
-        )
         if client is not None:
             self._client = client
         else:
@@ -45,15 +38,31 @@ class RedmineTracker(Tracker):
 
         for state in TicketState:
             name = state.value
+            should_be_closed = state.value == "done"
             if name not in existing:
-                is_closed = name in ("done", "blocked")
                 post_resp = await self._client.post(
                     "/issue_statuses.json",
-                    json={"issue_status": {"name": name, "is_closed": is_closed}},
+                    json={
+                        "issue_status": {
+                            "name": name,
+                            "is_closed": should_be_closed,
+                        }
+                    },
                 )
                 post_resp.raise_for_status()
                 created = post_resp.json().get("issue_status", {})
                 existing[name] = created
+            elif existing[name].get("is_closed", False) != should_be_closed:
+                put_resp = await self._client.put(
+                    f"/issue_statuses/{existing[name]['id']}.json",
+                    json={
+                        "issue_status": {
+                            "is_closed": should_be_closed,
+                        }
+                    },
+                )
+                put_resp.raise_for_status()
+                existing[name]["is_closed"] = should_be_closed
 
         self._status_map = {
             name: s["id"]
@@ -102,23 +111,6 @@ class RedmineTracker(Tracker):
         data = resp.json()
         return [self._parse_issue(item, project) for item in data.get("issues", [])]
 
-    async def _db_update_status(self, issue_id: int, status_id: int) -> None:
-        if "REDMINE_DB_SKIP" in os.environ:
-            return
-        try:
-            conn = await psycopg.AsyncConnection.connect(self._db_url)
-            try:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        "UPDATE issues SET status_id = %s, updated_on = NOW() WHERE id = %s",
-                        (status_id, issue_id),
-                    )
-                await conn.commit()
-            finally:
-                await conn.close()
-        except Exception:
-            logger.warning("direct DB status update failed", exc_info=True)
-
     async def update_state(self, item_id: str, state: str, project: str) -> None:
         status_id = self._status_map.get(state)
         if status_id is None:
@@ -129,7 +121,6 @@ class RedmineTracker(Tracker):
             json={"issue": {"status_id": status_id}},
         )
         resp.raise_for_status()
-        await self._db_update_status(int(item_id), status_id)
 
     async def get_item(self, item_id: str, project: str) -> dict:
         resp = await self._client.get(f"/issues/{item_id}.json")

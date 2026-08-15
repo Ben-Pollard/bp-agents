@@ -28,6 +28,7 @@ services:
     networks:
       bp_agents:
         ipv4_address: 172.20.0.10
+      sandbox_net: {}
 
   redmine:
     image: redmine:6
@@ -149,6 +150,7 @@ services:
         condition: service_started
     networks:
       - bp_agents
+      - sandbox_net
 
 volumes:
   postgres_data:
@@ -162,3 +164,5 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/16
+  sandbox_net:
+    name: sandbox_net

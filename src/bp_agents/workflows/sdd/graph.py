@@ -13,6 +13,7 @@ from bp_agents.workflows.sdd.state import (
 
 if TYPE_CHECKING:
     from bp_agents.platform.agent_client import OpenCodeClient
+    from bp_agents.platform.mcp.contract_broker import ContractBroker
     from bp_agents.platform.sandbox import Sandbox, SandboxConfig
     from bp_agents.platform.tracker import Tracker
 
@@ -141,6 +142,8 @@ def build_ticket_pipeline(
     skills_path: str | None = None,
     open_code_client: "OpenCodeClient | None" = None,
     otel_port: int | None = None,
+    broker: "ContractBroker | None" = None,
+    mcp_port: int | None = None,
 ):
     builder = StateGraph(TicketPipelineState)
 
@@ -159,6 +162,8 @@ def build_ticket_pipeline(
             tracker=tracker,
             client=open_code_client,
             otel_port=otel_port,
+            broker=broker,
+            mcp_port=mcp_port,
         )
     else:
         implement_node = _stub_implement_node(tracker)

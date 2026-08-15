@@ -10,6 +10,7 @@ import httpx
 
 from bp_agents.platform.agent_client import OpenCodeClient
 from bp_agents.platform.dispatch import OUTCOME_FILENAME, dispatch
+from bp_agents.platform.mcp.contract_broker import ContractNotFulfilledError
 from bp_agents.platform.sandbox import Sandbox, SandboxConfig
 from bp_agents.platform.sandbox.config import WORKSPACE_MOUNT_PATH
 from bp_agents.workflows.sdd.contracts import TddOutput
@@ -17,6 +18,7 @@ from bp_agents.workflows.sdd.skill_configs import SKILL_CONFIGS
 from bp_agents.workflows.sdd.state import TicketPipelineState
 
 if TYPE_CHECKING:
+    from bp_agents.platform.mcp.contract_broker import ContractBroker
     from bp_agents.platform.tracker import Tracker
 
 logger = logging.getLogger(__name__)
@@ -52,7 +54,15 @@ def build_input_contract(
 
 def input_contract_to_prompt(contract: dict, outcome_path: str) -> str:
     body = contract["payload"]["ticket"]["body"]
-    return f"/{contract['payload']['skill']} {body}\n\noutcome_path: {outcome_path}"
+    return (
+        f"/{contract['payload']['skill']} {body}\n\n"
+        f"outcome_path: {outcome_path}\n\n"
+        f"---\n"
+        f"When finished, submit the outcome via MCP:\n"
+        f"1. Read CONTRACT_BROKER_TOKEN from environment\n"
+        f"2. Call the contract-broker submit_contract tool with the token and your outcome payload\n"
+        f"The MCP server will validate the payload against the stage schema.\n"
+    )
 
 
 class TddNode:
@@ -66,6 +76,8 @@ class TddNode:
         client: OpenCodeClient | None = None,
         max_retries: int = 3,
         otel_port: int | None = None,
+        broker: "ContractBroker | None" = None,
+        mcp_port: int | None = None,
     ) -> None:
         self._sandbox = sandbox
         self._sandbox_config = sandbox_config
@@ -75,6 +87,8 @@ class TddNode:
         self._client = client
         self._max_retries = max_retries
         self._otel_port = otel_port
+        self._broker = broker
+        self._mcp_port = mcp_port
 
     async def __call__(self, state: TicketPipelineState) -> dict:
         ticket_id = state["ticket_id"]
@@ -118,6 +132,8 @@ class TddNode:
                     api_key=api_key,
                     opencode_client=self._client,
                     otel_port=self._otel_port,
+                    broker=self._broker,
+                    mcp_port=self._mcp_port,
                 )
             except (
                 httpx.ConnectError,
@@ -152,6 +168,13 @@ class TddNode:
                 return {
                     "blocked_reason": "agent: no outcome file written by agent",
                 }
+            except ContractNotFulfilledError as exc:
+                logger.info(
+                    "ticket %s: blocked, reason: %s",
+                    ticket_id,
+                    exc,
+                )
+                return {"blocked_reason": str(exc)}
 
             try:
                 tdd_output = TddOutput.model_validate(outcome)
@@ -203,7 +226,12 @@ class TddNode:
                     "agent: blocked",
                 )
 
-            return await self._handle_complete(state, tdd_output, branch_name)
+            try:
+                result = await self._handle_complete(state, tdd_output, branch_name)
+            except Exception:
+                logger.exception("ticket %s: _handle_complete failed", ticket_id)
+                return {"blocked_reason": "auto: pipeline completion failed"}
+            return result
 
         return {"blocked_reason": "auto: max retries exhausted"}
 
@@ -307,6 +335,10 @@ class TddNode:
         _run_git(self._target_repo_path, "add", "-A")
         _run_git(
             self._target_repo_path,
+            "-c",
+            "user.name=bp-agents",
+            "-c",
+            "user.email=bp-agents@localhost",
             "commit",
             "-m",
             f"feat({ticket_id}): TDD implementation",

@@ -1,6 +1,14 @@
+import socket
 from dataclasses import dataclass, field
 
 WORKSPACE_MOUNT_PATH = "/data/workspace"
+
+
+def _resolve_host(hostname: str) -> str:
+    try:
+        return socket.gethostbyname(hostname)
+    except OSError:
+        return hostname
 
 
 @dataclass
@@ -19,6 +27,7 @@ class SandboxConfig:
     https_proxy: str = "http://172.17.0.1:8080"
     no_proxy: str = "localhost,127.0.0.1"
     dns_servers: list[str] | None = None
+    extra_hosts: dict[str, str] = field(default_factory=dict)
     command: list[str] | None = None
 
 

@@ -11,6 +11,7 @@ import httpx
 
 from bp_agents.platform.agent_client import OpenCodeClient
 from bp_agents.platform.agent_config import AgentConfig, to_opencode_json
+from bp_agents.platform.mcp.contract_broker import ContractNotFulfilledError
 from bp_agents.platform.sandbox.base import Sandbox
 from bp_agents.platform.sandbox.config import SandboxConfig
 
@@ -127,6 +128,7 @@ async def dispatch(
     opencode_client: OpenCodeClient | None = None,
     broker: "ContractBroker | None" = None,
     otel_port: int | None = None,
+    mcp_port: int | None = None,
 ) -> dict:
     """Full agent lifecycle.
 
@@ -160,10 +162,17 @@ async def dispatch(
             f"contents: {[p.name for p in skill_dirs]}"
         )
 
+    mcp_defs: dict = {}
+    if broker is not None and mcp_port is not None:
+        mcp_defs["contract-broker"] = {
+            "type": "remote",
+            "url": f"http://orchestrator:{mcp_port}/mcp",
+        }
+
     opencode_config = to_opencode_json(
         config,
         PROVIDER_DEFINITIONS,
-        {},
+        mcp_defs,
         skills_path=skills_path,
         otel_enabled=otel_port is not None,
         plugins=["otel-observability.ts"],
@@ -219,6 +228,7 @@ async def dispatch(
         https_proxy=sandbox_config.https_proxy,
         no_proxy=sandbox_config.no_proxy,
         dns_servers=sandbox_config.dns_servers,
+        extra_hosts=sandbox_config.extra_hosts,
         command=sandbox_config.command,
     )
 
@@ -263,6 +273,23 @@ async def dispatch(
         )
 
         outcome_host_path = os.path.join(workspace, OUTCOME_FILENAME)
+
+        if broker is not None and broker_token is not None:
+            accepted = broker.check_acceptance(broker_token)
+            if accepted is not None:
+                logger.debug("broker accepted contract for token=%s", broker_token[:8])
+                return accepted.contract
+            status = broker.submission_status(broker_token)
+            if status == "exhausted":
+                raise ContractNotFulfilledError(
+                    "agent: contract validation failed - max attempts exceeded"
+                )
+            if status == "pending":
+                raise ContractNotFulfilledError("agent: no contract submitted via MCP")
+            raise ContractNotFulfilledError(
+                "agent: contract binding expired or invalid"
+            )
+
         logger.debug("looking for outcome at %s", outcome_host_path)
         if not os.path.exists(outcome_host_path):
             logger.debug(
@@ -275,9 +302,6 @@ async def dispatch(
         with open(outcome_host_path) as f:
             outcome = json.load(f)
             logger.debug("read outcome: %s", json.dumps(outcome))
-
-        if broker is not None and broker_token is not None:
-            broker.submit(broker_token, outcome)
 
         return outcome
     finally:

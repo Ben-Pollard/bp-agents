@@ -15,6 +15,7 @@ DEFAULT_ALLOWLIST = [
     "registry.npmjs.org",
     "context7.com",
     "api.context7.com",
+    "orchestrator",
 ]
 
 logger = logging.getLogger(__name__)

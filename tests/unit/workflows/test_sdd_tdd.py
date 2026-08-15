@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from bp_agents.platform.mcp.contract_broker import ContractNotFulfilledError
 from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
 from bp_agents.workflows.sdd.contracts import TddOutput
 from bp_agents.workflows.sdd.nodes.tdd import (
@@ -589,3 +590,43 @@ class TestTddNode:
         assert (
             len(retry_messages) == 1
         ), f"Expected 1 retry log message, got {len(retry_messages)}"
+
+    async def test_tdd_contract_not_fulfilled_returns_blocked(
+        self,
+        target_repo: Path,
+        skills_dir: Path,
+        mock_sandbox: MagicMock,
+        sandbox_config: SandboxConfig,
+        tracker: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import logging
+
+        node = TddNode(
+            sandbox=mock_sandbox,
+            sandbox_config=sandbox_config,
+            target_repo_path=str(target_repo),
+            skills_path=str(skills_dir),
+            tracker=tracker,
+        )
+
+        caplog.set_level(logging.INFO)
+
+        with patch(
+            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
+            AsyncMock(
+                side_effect=ContractNotFulfilledError(
+                    "agent: no contract submitted via MCP"
+                )
+            ),
+        ):
+            result = await node(_make_state())
+
+        assert "status" not in result
+        assert result["blocked_reason"] == "agent: no contract submitted via MCP"
+
+        messages = [r.message for r in caplog.records]
+        assert any(
+            "blocked, reason: agent: no contract submitted via MCP" in m
+            for m in messages
+        )

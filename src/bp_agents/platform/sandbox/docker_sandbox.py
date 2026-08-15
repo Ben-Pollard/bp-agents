@@ -71,6 +71,9 @@ class DockerSandbox(Sandbox):
         env.setdefault("HTTP_PROXY", config.http_proxy)
         env.setdefault("HTTPS_PROXY", config.https_proxy)
         env.setdefault("NO_PROXY", config.no_proxy)
+        env.setdefault("http_proxy", config.http_proxy)
+        env.setdefault("https_proxy", config.https_proxy)
+        env.setdefault("no_proxy", config.no_proxy)
         return env
 
     @staticmethod
@@ -112,6 +115,9 @@ class DockerSandbox(Sandbox):
 
         if config.dns_servers:
             create_kwargs["dns"] = config.dns_servers
+
+        if config.extra_hosts:
+            create_kwargs["extra_hosts"] = config.extra_hosts
 
         try:
             container: Container = await asyncio.to_thread(
