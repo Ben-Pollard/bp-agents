@@ -6,4 +6,4 @@ Agent-specific LangGraph graphs built on the platform. Each workflow defines its
 
 | Workflow | Path                     | Description                                    |
 | -------- | ------------------------ | ---------------------------------------------- |
-| sdd      | `./src/workflows/sdd/`   | Ticket-driven autonomous software development   |
+| sdd      | `./src/bp_agents/workflows/sdd/`   | Ticket-driven autonomous software development   |

@@ -159,7 +159,7 @@ def test_sandbox_lifecycle_with_policy() -> None:
     sandbox = DockerSandbox(docker_client=client, egress_policy=EgressPolicy())
 
     config = SandboxConfig(
-        image="symphony-agent:latest",
+        image="opencode-agent:latest",
         workspace_path="/tmp/ws",
         skills_path="/tmp/skills",
         runtime="runsc",
@@ -190,7 +190,7 @@ def test_runsc_unavailable_raises_not_falls_back() -> None:
     sandbox = DockerSandbox(docker_client=client)
 
     config = SandboxConfig(
-        image="symphony-agent:latest",
+        image="opencode-agent:latest",
         workspace_path="/tmp/ws",
         skills_path="/tmp/skills",
         runtime="runsc",

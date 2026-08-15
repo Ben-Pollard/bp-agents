@@ -60,7 +60,7 @@ Each stage has a configurable timeout. On timeout, the orchestrator kills the ag
 2. Retry 1 fails. Retry 2 fails. Retry limit of 3 reached.
 3. Orchestrator transitions to Blocked with reason "auto: max retries (3) exhausted for TDD stage."
 4. Developer investigates, modifies code on the feature branch directly.
-5. Developer runs `symphony unblock hello-1 --note "Fixed import path"`.
+5. Developer runs `bp-agents sdd unblock hello-1 --note "Fixed import path"`.
 6. Orchestrator transitions to Awaiting review (TDD was completed from prior retries; work is on branch).
 7. Pipeline resumes from code review stage.
 
@@ -85,7 +85,7 @@ Each stage has a configurable timeout. On timeout, the orchestrator kills the ag
 ### Acceptance Criteria
 
 - [AC-12] WHEN a stage exceeds its configured retry limit, stdout SHALL log `ticket <id>: blocked (auto: max retries exhausted)` and the sandbox orchestration layer SHALL report no new sessions for that ticket until unblocked.
-- [AC-13] The blocked reason as reported by `symphony status <id>` and the front end SHALL be prefixed with `auto:` (retry limit, timeout) or `agent:` (agent-declared).
+- [AC-13] The blocked reason as reported by `bp-agents sdd status <id>` and the front end SHALL be prefixed with `auto:` (retry limit, timeout) or `agent:` (agent-declared).
 - [AC-17] WHEN the orchestrator restarts after a crash, stdout SHALL log a recovery event per in-flight ticket (`ticket <id>: recovered at <stage> after crash`).
 - [AC-18] IF a ticket was in a stage and the sandbox orchestration layer reports no session for it on restart, THEN stdout SHALL log a re-dispatch for that stage only, and the sandbox orchestration layer SHALL report a new session — no session SHALL be reported for any earlier completed stage of that ticket.
 - [AC-19] WHEN the orchestrator restarts and finds an unprocessed stage outcome, stdout SHALL log `ticket <id>: processing unapplied outcome from <stage>` and the sandbox orchestration layer SHALL report no new session for that stage.

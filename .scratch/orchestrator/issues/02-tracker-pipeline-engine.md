@@ -81,7 +81,7 @@ The orchestrator manages multiple projects concurrently from a single process. E
 8. Orchestrator dispatches verification agent with input contract (skill: verification-before-completion, workspace at `feat/hello-1`).
 9. Verification agent runs test suite independently, exits with `{status: complete, tests_pass: true}`.
 10. Orchestrator transitions to Awaiting approval. Developer's git client shows `feat/hello-1` branch.
-11. Developer reviews diff, runs `symphony approve hello-1`.
+11. Developer reviews diff, runs `bp-agents sdd approve hello-1`.
 12. Orchestrator merges `feat/hello-1` to main, transitions to Done, tears down workspace.
 
 **Scenario: Cross-project ticket creation**

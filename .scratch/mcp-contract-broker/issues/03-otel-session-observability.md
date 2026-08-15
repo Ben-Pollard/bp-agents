@@ -19,7 +19,7 @@ All code changes for OTEL Session Observability are complete and verified by pas
 
 **Remaining infrastructure steps for end-to-end verification (requires human action):**
 1. Rebuild orchestrator Docker image with latest code (`docker compose build orchestrator && docker compose up -d orchestrator`)
-2. Rebuild sandbox Docker image so OTEL npm packages are actually installed (`docker build -f Dockerfile.sandbox -t symphony-agent:latest .`)
+2. Rebuild sandbox Docker image so OTEL npm packages are actually installed (`docker build -f Dockerfile.sandbox -t opencode-agent:latest .`)
 3. Create a ticket in Redmine with status "New" to trigger a dispatch
 4. Set `BP_LOG_LEVEL=debug` in `.env` and restart orchestrator
 5. Verify OTEL spans appear in `docker logs bp-agents-orchestrator-1`

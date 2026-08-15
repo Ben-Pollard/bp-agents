@@ -27,3 +27,4 @@ class SandboxSession:
     container_id: str
     port: int
     base_url: str
+    mapped_port: int | None = None

@@ -175,7 +175,7 @@ class TestTddGraphWire:
         app = build_ticket_pipeline(
             sandbox=mock_sandbox,
             sandbox_config=SandboxConfig(
-                image="symphony-agent:latest",
+                image="opencode-agent:latest",
                 workspace_path=str(target_repo),
                 skills_path=str(target_repo / "skills"),
                 runtime="",
@@ -231,7 +231,7 @@ class TestTddGraphWire:
         app = build_ticket_pipeline(
             sandbox=mock_sandbox,
             sandbox_config=SandboxConfig(
-                image="symphony-agent:latest",
+                image="opencode-agent:latest",
                 workspace_path=str(target_repo),
                 skills_path=str(target_repo / "skills"),
                 runtime="",

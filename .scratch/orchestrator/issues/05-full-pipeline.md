@@ -61,7 +61,7 @@ Agent-written code stays local until approval. The orchestrator maintains a loca
 8. Behavioral verify agent runs QA skill with playwright MCP/browser against acceptance criteria, exits with per-AC pass/fail and evidence.
 9. Deterministic gate agent runs lint, typecheck, and test suite, exits pass/fail.
 10. Orchestrator transitions to Awaiting approval. Developer's git client shows `feat/hello-1` branch.
-11. Developer reviews diff, runs `symphony approve hello-1`.
+11. Developer reviews diff, runs `bp-agents sdd approve hello-1`.
 12. Orchestrator merges `feat/hello-1` to main, transitions to Done, tears down workspace.
 
 **Scenario: Review finds issues, agent revises**

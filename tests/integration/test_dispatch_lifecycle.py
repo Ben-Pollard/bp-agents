@@ -77,7 +77,7 @@ def _sandbox_config() -> SandboxConfig:
     (Path(skills_path) / "tdd" / "SKILL.md").parent.mkdir(parents=True, exist_ok=True)
     (Path(skills_path) / "tdd" / "SKILL.md").write_text("# TDD skill")
     return SandboxConfig(
-        image="symphony-agent:latest",
+        image="opencode-agent:latest",
         workspace_path="/tmp/ws",
         skills_path=skills_path,
         runtime="",

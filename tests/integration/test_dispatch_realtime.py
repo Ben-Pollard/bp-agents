@@ -20,7 +20,7 @@ from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
 from bp_agents.platform.sandbox.egress import EgressPolicy
 
-_SANDBOX_IMAGE = os.getenv("BP_SANDBOX_IMAGE", "symphony-agent:latest")
+_SANDBOX_IMAGE = os.getenv("BP_SANDBOX_IMAGE", "opencode-agent:latest")
 
 
 def _sandbox_image_available() -> bool:

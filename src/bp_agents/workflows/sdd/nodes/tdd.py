@@ -221,10 +221,27 @@ class TddNode:
 
         os.makedirs(repo_path, exist_ok=True)
         try:
+            _run_git(
+                repo_path, "config", "--global", "--add", "safe.directory", repo_path
+            )
+        except subprocess.CalledProcessError:
+            pass
+        try:
             _run_git(repo_path, "rev-parse", "--git-dir")
         except subprocess.CalledProcessError:
             _run_git(repo_path, "init")
             _run_git(repo_path, "checkout", "-b", "main")
+            _run_git(
+                repo_path,
+                "-c",
+                "user.name=bp-agents",
+                "-c",
+                "user.email=bp-agents@localhost",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "initial commit",
+            )
             _run_git(
                 repo_path,
                 "-c",

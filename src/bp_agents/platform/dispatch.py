@@ -58,16 +58,19 @@ async def _stream_container_logs(
 
             client = docker.from_env()
             container = client.containers.get(container_id)
-            for line in await asyncio.to_thread(
-                container.logs,
-                stdout=True,
-                stderr=True,
-                stream=True,
-                follow=True,
-                timestamps=True,
-            ):
-                text = line.decode(errors="replace").rstrip()
-                log.info("[sandbox] %s", text)
+
+            def _read_logs() -> None:
+                for line in container.logs(
+                    stdout=True,
+                    stderr=True,
+                    stream=True,
+                    follow=True,
+                    timestamps=True,
+                ):
+                    text = line.decode(errors="replace").rstrip()
+                    log.info("[sandbox] %s", text)
+
+            await asyncio.to_thread(_read_logs)
         except Exception:
             log.debug("sandbox log stream ended for %s", container_id)
 
@@ -97,7 +100,11 @@ async def _wait_for_health(
                     resp.status_code,
                     resp.text[:500],
                 )
-            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            except (
+                httpx.ConnectError,
+                httpx.TimeoutException,
+                httpx.RemoteProtocolError,
+            ) as exc:
                 logger.debug(
                     "health check attempt=%d/%d %s",
                     attempt + 1,
@@ -231,7 +238,6 @@ async def dispatch(
     own_client = opencode_client is None
     client = opencode_client or OpenCodeClient(sandbox_session.base_url)
     oc_session = None
-    log_stream = None
 
     try:
         healthy = await _wait_for_health(sandbox_session.base_url)

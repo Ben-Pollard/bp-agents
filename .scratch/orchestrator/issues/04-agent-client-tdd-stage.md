@@ -62,7 +62,7 @@ LLM API keys are injected into opencode's process memory via HTTP API — never 
 2. Agent exits with `{status: blocked, reason: "Module utils.validators not yet implemented — needed by this ticket"}`.
 3. Orchestrator transitions to Blocked with reason "agent: Module utils.validators not yet implemented."
 4. Developer works on the blocking ticket or provides an implementation of the missing module.
-5. Developer runs `symphony unblock hello-1`.
+5. Developer runs `bp-agents sdd unblock hello-1`.
 6. Orchestrator resumes at Implementing.
 
 **Scenario: Sandbox attempts blocked network access**

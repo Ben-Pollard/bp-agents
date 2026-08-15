@@ -167,7 +167,7 @@ class TestTddNode:
     @pytest.fixture
     def sandbox_config(self) -> SandboxConfig:
         return SandboxConfig(
-            image="symphony-agent:latest",
+            image="opencode-agent:latest",
             workspace_path="/tmp/ws",
             skills_path="/tmp/skills",
             runtime="",

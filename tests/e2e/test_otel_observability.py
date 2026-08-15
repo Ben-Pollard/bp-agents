@@ -26,7 +26,7 @@ pytestmark = [pytest.mark.e2e]
 
 _RECEIVER_PORT = 4318
 _ORCHESTRATOR_SERVICE = "bp-agents-orchestrator-1"
-_SANDBOX_IMAGE = "symphony-agent:latest"
+_SANDBOX_IMAGE = "opencode-agent:latest"
 _OTEL_NPM_PACKAGES = [
     "@opentelemetry/sdk-node",
     "@opentelemetry/exporter-trace-otlp-proto",
@@ -136,7 +136,7 @@ def test_sandbox_has_otel_npm_packages() -> None:
     """Sandbox image must have @opentelemetry/* packages for span export.
 
     RED when the sandbox image was built before OTEL packages were added
-    to Dockerfile.sandbox:11. Rebuild with `docker build -t symphony-agent:latest
+    to Dockerfile.sandbox:11. Rebuild with `docker build -t opencode-agent:latest
     -f Dockerfile.sandbox .`.
     """
     missing: list[str] = []

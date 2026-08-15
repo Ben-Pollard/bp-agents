@@ -175,7 +175,7 @@ The orchestrator manages multiple projects concurrently from a single process. E
 8. Orchestrator dispatches verification agent with input contract (skill: verification-before-completion, workspace at `feat/hello-1`).
 9. Verification agent runs test suite independently, exits with `{status: complete, tests_pass: true}`.
 10. Orchestrator transitions to Awaiting approval. Developer's git client shows `feat/hello-1` branch.
-11. Developer reviews diff, runs `symphony approve hello-1`.
+11. Developer reviews diff, runs `bp-agents sdd approve hello-1`.
 12. Orchestrator merges `feat/hello-1` to main, transitions to Done, tears down workspace.
 
 ### Scenario: Review finds issues, agent revises
@@ -193,14 +193,14 @@ The orchestrator manages multiple projects concurrently from a single process. E
 2. Retry 1 fails. Retry 2 fails. Retry limit of 3 reached.
 3. Orchestrator transitions to Blocked with reason "auto: max retries (3) exhausted for TDD stage."
 4. Developer investigates, modifies code on the feature branch directly.
-5. Developer runs `symphony unblock hello-1 --note "Fixed import path"`.
+5. Developer runs `bp-agents sdd unblock hello-1 --note "Fixed import path"`.
 6. Orchestrator transitions to Awaiting review (TDD was completed from prior retries; work is on branch).
 7. Pipeline resumes from code review stage.
 
 ### Scenario: Human rejects with reason
 
 1. Ticket reaches Awaiting approval. Developer reviews the diff.
-2. Developer finds the implementation missed a requirement, runs `symphony reject hello-1 --reason "No validation on null input as per AC-04"`.
+2. Developer finds the implementation missed a requirement, runs `bp-agents sdd reject hello-1 --reason "No validation on null input as per AC-04"`.
 3. Orchestrator records rejection event, transitions to Implementing (back to TDD).
 4. Orchestrator creates a fresh TDD branch, dispatches TDD agent with rejection reason in contract.
 5. Agent implements the fix. Orchestrator commits. Pipeline runs through all stages again.
@@ -208,7 +208,7 @@ The orchestrator manages multiple projects concurrently from a single process. E
 ### Scenario: Human requests realignment
 
 1. Ticket reaches Awaiting approval. Developer realizes the ACs are wrong.
-2. Developer runs `symphony realign hello-1` with updated ACs (AC-04 added, AC-05 modified).
+2. Developer runs `bp-agents sdd realign hello-1` with updated ACs (AC-04 added, AC-05 modified).
 3. Orchestrator records redefinition event: `AC-04 ADDED, AC-05 MODIFIED: inputs over 1MB must raise ValidationError`. Timestamp and actor recorded.
 4. Orchestrator transitions to Implementing, creates a fresh branch, dispatches TDD agent with new ACs in contract.
 5. Pipeline runs from start with updated requirements.
@@ -219,7 +219,7 @@ The orchestrator manages multiple projects concurrently from a single process. E
 2. Agent exits with `{status: blocked, reason: "Module utils.validators not yet implemented — needed by this ticket"}`.
 3. Orchestrator transitions to Blocked with reason "agent: Module utils.validators not yet implemented."
 4. Developer works on the blocking ticket or provides an implementation of the missing module.
-5. Developer runs `symphony unblock hello-1`.
+5. Developer runs `bp-agents sdd unblock hello-1`.
 6. Orchestrator resumes at Implementing.
 
 ### Scenario: Orchestrator crashes mid-pipeline
@@ -306,7 +306,7 @@ The orchestrator manages multiple projects concurrently from a single process. E
 ### Blocked and retries
 
 - [AC-12] (Scenario: Max retries exhausted, human unblocks) WHEN a stage exceeds its configured retry limit, stdout SHALL log `ticket <id>: blocked (auto: max retries exhausted)` and the sandbox orchestration layer SHALL report no new sessions for that ticket until unblocked.
-- [AC-13] The blocked reason as reported by `symphony status <id>` and the front end SHALL be prefixed with `auto:` (retry limit, timeout) or `agent:` (agent-declared).
+- [AC-13] The blocked reason as reported by `bp-agents sdd status <id>` and the front end SHALL be prefixed with `auto:` (retry limit, timeout) or `agent:` (agent-declared).
 
 ### Contracts
 

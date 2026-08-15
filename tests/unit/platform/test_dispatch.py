@@ -39,7 +39,7 @@ def _sandbox_config(skills_path: str | None = None) -> SandboxConfig:
         )
         (Path(skills_path) / "tdd" / "SKILL.md").write_text("# TDD skill")
     return SandboxConfig(
-        image="symphony-agent:latest",
+        image="opencode-agent:latest",
         workspace_path="/tmp/ws",
         skills_path=skills_path,
         runtime="",
@@ -363,7 +363,7 @@ async def test_dispatch_strips_credentials_from_sandbox_env(
 @pytest.mark.asyncio
 async def test_dispatch_raises_when_skills_path_is_empty() -> None:
     cfg = SandboxConfig(
-        image="symphony-agent:latest",
+        image="opencode-agent:latest",
         workspace_path="/tmp/ws",
         skills_path="",
         runtime="",
@@ -388,7 +388,7 @@ async def test_dispatch_raises_when_skills_path_missing_skill_md() -> None:
     (Path(skills_path) / "empty_skill").mkdir(parents=True, exist_ok=True)
 
     cfg = SandboxConfig(
-        image="symphony-agent:latest",
+        image="opencode-agent:latest",
         workspace_path="/tmp/ws",
         skills_path=skills_path,
         runtime="",

@@ -64,7 +64,7 @@ from abc import ABC, abstractmethod
 
 @dataclass
 class SandboxConfig:
-    image: str                  # e.g. "symphony-agent:latest"
+    image: str                  # e.g. "opencode-agent:latest"
     workspace_path: str         # host path to bind-mount
     skills_path: str            # host path for .agents/skills/ (bind-mounted read-only)
     runtime: str                # "runsc" (gVisor) or "" (default)
@@ -134,17 +134,17 @@ class OpenCodeClient:
 
 ```python
 class CLI:
-    """symphony CLI. Actions registered by workflows."""
+    """bp-agents CLI. Actions registered by workflows."""
     def __init__(self): ...
     def register_action(self, name: str, handler: Callable[[str, dict], None]): ...
     async def run(self, args: list[str]) -> None: ...
 
 # Registered by SDD workflow:
-#   symphony approve <ticket-id>
-#   symphony reject <ticket-id> --reason "..."
-#   symphony realign <ticket-id> --acs "..."
-#   symphony unblock <ticket-id> [--note "..."]
-#   symphony status [<ticket-id>]
+#   bp-agents sdd approve <ticket-id>
+#   bp-agents sdd reject <ticket-id> --reason "..."
+#   bp-agents sdd realign <ticket-id> --acs "..."
+#   bp-agents sdd unblock <ticket-id> [--note "..."]
+#   bp-agents sdd status [<ticket-id>]
 ```
 
 ### `platform.agent_config` — per-skill agent configuration

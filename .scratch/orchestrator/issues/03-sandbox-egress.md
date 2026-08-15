@@ -57,7 +57,7 @@ from abc import ABC, abstractmethod
 
 @dataclass
 class SandboxConfig:
-    image: str                  # e.g. "symphony-agent:latest"
+    image: str                  # e.g. "opencode-agent:latest"
     workspace_path: str         # host path to bind-mount
     skills_path: str            # host path for .agents/skills/
     runtime: str                # "runsc" (gVisor) or "" (default)

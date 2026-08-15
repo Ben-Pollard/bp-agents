@@ -238,7 +238,7 @@ def _write_env(api_key: str) -> None:
         "REDMINE_PROJECT": BP_PROJECT_ID,
         "EGRESS_PROXY_URL": "http://egress-proxy:8080",
         "BP_POLL_INTERVAL": "5",
-        "BP_SANDBOX_IMAGE": os.getenv("BP_SANDBOX_IMAGE", "symphony-agent:latest"),
+        "BP_SANDBOX_IMAGE": os.getenv("BP_SANDBOX_IMAGE", "opencode-agent:latest"),
         "BP_TARGET_REPO_PATH": os.getenv(
             "BP_TARGET_REPO_PATH", "/data/repos/default-project"
         ),

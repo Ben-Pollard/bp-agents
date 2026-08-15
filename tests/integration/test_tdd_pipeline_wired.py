@@ -100,7 +100,7 @@ async def test_tdd_pipeline_wired_dispatch_logs_contracts(
     app = build_ticket_pipeline(
         sandbox=mock_sandbox,
         sandbox_config=SandboxConfig(
-            image="symphony-agent:latest",
+            image="opencode-agent:latest",
             workspace_path=str(target_repo),
             skills_path=str(skills_dir),
             runtime="",
@@ -191,7 +191,7 @@ async def test_tdd_pipeline_wired_blocked_logs_reason(
     app = build_ticket_pipeline(
         sandbox=mock_sandbox,
         sandbox_config=SandboxConfig(
-            image="symphony-agent:latest",
+            image="opencode-agent:latest",
             workspace_path=str(target_repo),
             skills_path=str(skills_dir),
             runtime="",

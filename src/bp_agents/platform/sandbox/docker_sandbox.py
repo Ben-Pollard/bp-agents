@@ -56,10 +56,13 @@ class DockerSandbox(Sandbox):
             base_url = f"http://{container_ip}:8080"
             port = 8080
 
+        mapped_port = self._extract_port(container)
+
         return SandboxSession(
             container_id=container.id,
             port=port,
             base_url=base_url,
+            mapped_port=mapped_port,
         )
 
     @staticmethod

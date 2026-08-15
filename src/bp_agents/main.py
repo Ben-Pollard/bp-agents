@@ -31,7 +31,7 @@ REDMINE_API_KEY = os.getenv("REDMINE_API_KEY", "")
 REDMINE_PROJECT = os.getenv("REDMINE_PROJECT", "default")
 POLL_INTERVAL = int(os.getenv("BP_POLL_INTERVAL", "5"))
 PIPELINE_DB_PATH = os.getenv("BP_PIPELINE_DB_PATH", "pipeline_checkpoints.db")
-SANDBOX_IMAGE = os.getenv("BP_SANDBOX_IMAGE", "symphony-agent:latest")
+SANDBOX_IMAGE = os.getenv("BP_SANDBOX_IMAGE", "opencode-agent:latest")
 TARGET_REPO_PATH = os.getenv("BP_TARGET_REPO_PATH", "")
 SKILLS_PATH = os.getenv("BP_SKILLS_PATH", ".agents/skills")
 SANDBOX_RUNTIME = os.getenv("BP_SANDBOX_RUNTIME", "runsc")
@@ -86,7 +86,15 @@ async def main() -> None:
             https_proxy="http://172.20.0.10:8080",
             dns_servers=["8.8.8.8"],
             env=sandbox_env,
-            command=["opencode", "serve", "--port", "8080", "--hostname", "0.0.0.0"],
+            command=[
+                "opencode",
+                "serve",
+                "--port",
+                "8080",
+                "--print-logs",
+                "--hostname",
+                "0.0.0.0",
+            ],
         )
 
     async with AsyncSqliteSaver.from_conn_string(PIPELINE_DB_PATH) as checkpointer:
