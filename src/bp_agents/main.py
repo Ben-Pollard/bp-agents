@@ -15,7 +15,6 @@ from bp_agents.platform.observability.otel_receiver import OtelReceiver
 from bp_agents.platform.runner import GraphRunner, setup_logging, wait_for_dependency
 from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
-from bp_agents.platform.sandbox.egress import EgressPolicy
 from bp_agents.platform.work_initiator import TrackerPoller
 from bp_agents.workflows.sdd.contracts import QaOutput, ReviewOutput, TddOutput
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
@@ -67,9 +66,6 @@ async def main() -> None:
     setup_logging()
     logger.info("sdd orchestrator starting")
 
-    egress_policy = EgressPolicy()
-    logger.info("egress allowlist on startup: %s", egress_policy.allowlist)
-
     wait_for_dependency(f"{REDMINE_BASE_URL}/", "Redmine")
 
     tracker = RedmineTracker(
@@ -81,7 +77,7 @@ async def main() -> None:
     sandbox = None
     sandbox_config = None
     if TARGET_REPO_PATH:
-        sandbox = DockerSandbox(egress_policy=egress_policy)
+        sandbox = DockerSandbox()
         sandbox_env = {}
         for key in CREDENTIAL_KEYS:
             val = os.getenv(key)

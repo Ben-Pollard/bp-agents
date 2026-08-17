@@ -23,8 +23,7 @@ from bp_agents.platform.agent_config import AgentConfig
 from bp_agents.platform.dispatch import OUTCOME_FILENAME, dispatch
 from bp_agents.platform.sandbox.config import WORKSPACE_MOUNT_PATH, SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
-from bp_agents.platform.sandbox.egress import EgressPolicy
-from bp_agents.workflows.sdd.nodes.tdd import (
+from bp_agents.workflows.sdd.nodes.agent_stage import (
     build_input_contract,
     input_contract_to_prompt,
 )
@@ -122,7 +121,7 @@ async def test_ticket_to_sandbox_first_message(
         "with fields: status (DONE|BLOCKED|FAIL), summary, concerns.\n"
     )
 
-    sandbox = DockerSandbox(egress_policy=EgressPolicy())
+    sandbox = DockerSandbox()
     cfg = SandboxConfig(
         image=_TEST_IMAGE_TAG,
         workspace_path=workspace,

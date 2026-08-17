@@ -1,7 +1,5 @@
 """Tests for ContractBroker — contract validation lifecycle."""
 
-import asyncio
-
 import pytest
 from pydantic import BaseModel
 
@@ -128,55 +126,6 @@ class TestSubmit:
         assert result["terminal"] is True
 
 
-class TestAwaitAcceptance:
-    @pytest.mark.asyncio
-    async def test_blocks_until_acceptance(
-        self, registered_broker: ContractBroker
-    ) -> None:
-        token = registered_broker.create_binding("sdd", "tdd", "run-5")
-
-        async def submit_later() -> None:
-            await asyncio.sleep(0.05)
-            registered_broker.submit(
-                token,
-                {
-                    "status": "DONE",
-                    "summary": "ok",
-                    "results": {"passed": 1},
-                },
-            )
-
-        async with asyncio.TaskGroup() as tg:
-            tg.create_task(submit_later())
-            accepted = await registered_broker.await_acceptance(token)
-
-        assert accepted.workflow == "sdd"
-        assert accepted.stage == "tdd"
-        assert accepted.run_id == "run-5"
-        assert accepted.contract["status"] == "DONE"
-
-    @pytest.mark.asyncio
-    async def test_raises_for_unknown_token(self, broker: ContractBroker) -> None:
-        with pytest.raises(ValueError, match="unknown token"):
-            await broker.await_acceptance("no-such-token")
-
-
-class TestInvalidate:
-    def test_idempotent(self, registered_broker: ContractBroker) -> None:
-        token = registered_broker.create_binding("sdd", "tdd", "run-6")
-        registered_broker.invalidate(token)
-        registered_broker.invalidate(token)
-
-    @pytest.mark.asyncio
-    async def test_await_acceptance_raises_after_invalidation(
-        self, registered_broker: ContractBroker
-    ) -> None:
-        token = registered_broker.create_binding("sdd", "tdd", "run-7")
-        registered_broker.invalidate(token)
-        with pytest.raises(ValueError, match="unknown token"):
-            await registered_broker.await_acceptance(token)
-
-
 class TestExpiry:
     def test_expired_token_returns_terminal(
         self, registered_broker: ContractBroker
@@ -187,16 +136,6 @@ class TestExpiry:
         result = registered_broker.submit(token, {})
         assert result["accepted"] is False
         assert result["terminal"] is True
-
-    @pytest.mark.asyncio
-    async def test_await_expired_token_raises(
-        self, registered_broker: ContractBroker
-    ) -> None:
-        token = registered_broker.create_binding(
-            "sdd", "tdd", "run-9", ttl_seconds=-1.0
-        )
-        with pytest.raises(ValueError, match="expired"):
-            await registered_broker.await_acceptance(token)
 
 
 class TestSubmissionStatus:
@@ -228,13 +167,6 @@ class TestSubmissionStatus:
         self, registered_broker: ContractBroker
     ) -> None:
         assert registered_broker.submission_status("no-such-token") is None
-
-    def test_returns_none_for_invalidated_token(
-        self, registered_broker: ContractBroker
-    ) -> None:
-        token = registered_broker.create_binding("sdd", "tdd", "run-s4")
-        registered_broker.invalidate(token)
-        assert registered_broker.submission_status(token) is None
 
     def test_returns_none_for_expired_token(
         self, registered_broker: ContractBroker

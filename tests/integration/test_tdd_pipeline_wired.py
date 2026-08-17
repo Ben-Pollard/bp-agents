@@ -93,9 +93,9 @@ async def test_tdd_pipeline_wired_dispatch_logs_contracts(
 
     fake_dispatch = AsyncMock(return_value=outcome)
 
-    import bp_agents.workflows.sdd.nodes.tdd as tdd_module
+    import bp_agents.workflows.sdd.nodes.agent_stage as agent_stage_module
 
-    monkeypatch.setattr(tdd_module, "dispatch", fake_dispatch)
+    monkeypatch.setattr(agent_stage_module, "dispatch", fake_dispatch)
 
     app = build_ticket_pipeline(
         sandbox=mock_sandbox,
@@ -184,9 +184,9 @@ async def test_tdd_pipeline_wired_blocked_logs_reason(
 
     fake_dispatch = AsyncMock(return_value=outcome)
 
-    import bp_agents.workflows.sdd.nodes.tdd as tdd_module
+    import bp_agents.workflows.sdd.nodes.agent_stage as agent_stage_module
 
-    monkeypatch.setattr(tdd_module, "dispatch", fake_dispatch)
+    monkeypatch.setattr(agent_stage_module, "dispatch", fake_dispatch)
 
     app = build_ticket_pipeline(
         sandbox=mock_sandbox,

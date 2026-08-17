@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,11 +11,6 @@ from bp_agents.platform.sandbox.config import (
     SandboxSession,
 )
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
-from bp_agents.platform.sandbox.egress import (
-    DEFAULT_ALLOWLIST,
-    EgressBlockedError,
-    EgressPolicy,
-)
 
 
 def test_sandbox_is_abstract() -> None:
@@ -25,7 +19,7 @@ def test_sandbox_is_abstract() -> None:
 
 
 def test_sandbox_has_abstract_methods() -> None:
-    methods = ["create", "is_running", "destroy"]
+    methods = ["create", "destroy"]
     for m in methods:
         assert hasattr(Sandbox, m)
         assert getattr(Sandbox, m).__isabstractmethod__
@@ -76,92 +70,6 @@ def test_sandbox_session_fields() -> None:
     assert session.base_url == "http://172.17.0.1:8080"
 
 
-class TestEgressPolicy:
-    def test_default_allowlist_includes_llm_endpoints(self) -> None:
-        policy = EgressPolicy()
-        assert policy.is_allowed("https://api.openai.com/v1/chat")
-        assert policy.is_allowed("https://api.anthropic.com/v1/messages")
-        assert policy.is_allowed("https://api.openrouter.ai/chat")
-        assert policy.is_allowed("https://openrouter.ai/api/v1")
-        assert policy.is_allowed("https://models.opencode.ai/")
-
-    def test_default_allowlist_includes_package_registries(self) -> None:
-        policy = EgressPolicy()
-        assert policy.is_allowed("https://pypi.org/simple/")
-        assert policy.is_allowed("https://files.pythonhosted.org/packages/")
-        assert policy.is_allowed("https://registry.npmjs.org/")
-
-    def test_default_allowlist_includes_mcp_endpoints(self) -> None:
-        policy = EgressPolicy()
-        assert policy.is_allowed("https://api.context7.com/v1/query")
-        assert policy.is_allowed("https://context7.com/")
-
-    def test_arbitrary_internet_is_blocked(self) -> None:
-        policy = EgressPolicy()
-        assert not policy.is_allowed("https://example.com")
-        assert not policy.is_allowed("https://google.com")
-        assert not policy.is_allowed("https://github.com/")
-
-    def test_git_remotes_are_blocked(self) -> None:
-        policy = EgressPolicy()
-        assert not policy.is_allowed("https://github.com/user/repo.git")
-        assert not policy.is_allowed("git@github.com:user/repo.git")
-
-    def test_check_raises_for_blocked_destination(self) -> None:
-        policy = EgressPolicy()
-        with pytest.raises(EgressBlockedError) as exc:
-            policy.check("https://example.com")
-        assert "blocked egress" in str(exc.value)
-        assert exc.value.destination == "https://example.com"
-
-    def test_check_passes_for_allowed_destination(self) -> None:
-        policy = EgressPolicy()
-        policy.check("https://api.openai.com/v1/chat")  # no error
-
-    def test_logs_allowlist_on_startup(self, caplog: pytest.LogCaptureFixture) -> None:
-        import logging
-
-        caplog.set_level(logging.INFO)
-        allowed = ["custom.example.com"]
-        EgressPolicy(allowlist=allowed)
-        assert "egress allowlist" in caplog.text
-        assert "custom.example.com" in caplog.text
-
-    def test_log_allowlist_method(self, caplog: pytest.LogCaptureFixture) -> None:
-        import logging
-
-        caplog.set_level(logging.INFO)
-        policy = EgressPolicy(allowlist=["test.example.com"])
-        caplog.clear()
-        policy.log_allowlist()
-        assert "egress allowlist" in caplog.text
-        assert "test.example.com" in caplog.text
-
-    def test_custom_allowlist(self) -> None:
-        policy = EgressPolicy(allowlist=["my-internal-api.com"])
-        assert policy.is_allowed("https://my-internal-api.com/data")
-        assert not policy.is_allowed("https://api.openai.com")
-
-    def test_subdomain_suffix_bypass_is_blocked(self) -> None:
-        policy = EgressPolicy()
-        assert not policy.is_allowed("https://evil-pypi.org.malicious.com")
-        assert not policy.is_allowed("https://pypi.org.malicious.com")
-        assert not policy.is_allowed("https://notpypi.org")
-
-    def test_subdomain_of_allowed_host_is_allowed(self) -> None:
-        policy = EgressPolicy()
-        assert policy.is_allowed("https://sub.pypi.org/simple/")
-        assert policy.is_allowed("https://api.openai.com/v1/chat")
-
-    def test_non_url_destination_is_blocked(self) -> None:
-        policy = EgressPolicy()
-        assert not policy.is_allowed("not a url")
-        assert not policy.is_allowed("")
-
-    def test_default_allowlist_constant_not_mutable(self) -> None:
-        assert "api.openai.com" in DEFAULT_ALLOWLIST
-
-
 class TestDockerSandbox:
     """Tests for DockerSandbox — uses injected mock client."""
 
@@ -198,51 +106,6 @@ class TestDockerSandbox:
             network="my-custom-network",
         )
 
-    async def test_git_commands_fail_in_sandbox(
-        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
-    ) -> None:
-        """Git is not available in the sandbox image.
-
-        AC-23: Any attempt by an agent to run a git command SHALL fail.
-        The sandbox image deliberately excludes git. DockerSandbox.exec_run
-        surfaces the container-level exec failure.
-        """
-        fake_container = MagicMock()
-        fake_container.exec_run.return_value = (1, b"git: command not found")
-        mock_docker_client.containers.get.return_value = fake_container
-
-        exit_code, output = await sandbox.exec_run("sandbox-1", "git status")
-        assert exit_code != 0
-        assert (
-            b"command not found" in output
-            or b"not found" in output.lower()
-            or b"not a command" in output.lower()
-            or b"no such file" in output.lower()
-        )
-        mock_docker_client.containers.get.assert_called_once_with("sandbox-1")
-        fake_container.exec_run.assert_called_once_with("git status")
-
-    async def test_exec_run_passes_shell_commands_with_redirects(
-        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
-    ) -> None:
-        """AC-2: exec_run must handle shell redirect syntax when wrapped in
-        sh -c. docker-py's exec_run splits the string via shlex.split and
-        passes tokens as positional args, so '2>&1' must be inside a shell
-        invocation, not as a direct argument to the target command.
-        """
-        fake_container = MagicMock()
-        fake_container.exec_run.return_value = (0, b"requests 2.32.0")
-        mock_docker_client.containers.get.return_value = fake_container
-
-        exit_code, output = await sandbox.exec_run(
-            "sandbox-1",
-            "sh -c 'pip install --dry-run requests 2>&1'",
-        )
-        assert exit_code == 0
-        fake_container.exec_run.assert_called_once_with(
-            "sh -c 'pip install --dry-run requests 2>&1'"
-        )
-
     async def test_create_returns_session_with_container_id(
         self,
         sandbox_config: SandboxConfig,
@@ -256,30 +119,6 @@ class TestDockerSandbox:
         session = await sandbox.create(sandbox_config)
 
         assert session.container_id == "abc123"
-
-    async def test_is_running_returns_true_for_running_container(
-        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
-    ) -> None:
-        fake_container = MagicMock()
-        fake_container.status = "running"
-        mock_docker_client.containers.get.return_value = fake_container
-
-        result = await sandbox.is_running("abc123")
-
-        assert result is True
-
-    async def test_is_running_returns_false_for_missing_container(
-        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
-    ) -> None:
-        import docker
-
-        mock_docker_client.containers.get.side_effect = docker.errors.NotFound(
-            "not found", response=MagicMock(status_code=404)
-        )
-
-        result = await sandbox.is_running("abc123")
-
-        assert result is False
 
     async def test_destroy_removes_container(
         self, mock_docker_client: MagicMock, sandbox: DockerSandbox
@@ -564,160 +403,6 @@ class TestDockerSandbox:
 
         assert session.port == 8080
         assert session.base_url == "http://172.17.0.1:8080"
-
-    async def test_accepts_egress_policy(self, mock_docker_client: MagicMock) -> None:
-        policy = EgressPolicy(allowlist=["custom-only.com"])
-        sandbox = DockerSandbox(docker_client=mock_docker_client, egress_policy=policy)
-        assert sandbox.egress_policy is policy
-
-    async def test_default_egress_policy_created(
-        self, mock_docker_client: MagicMock
-    ) -> None:
-        sandbox = DockerSandbox(docker_client=mock_docker_client)
-        assert isinstance(sandbox.egress_policy, EgressPolicy)
-
-    async def test_egress_policy_enforces_blocked_destinations(
-        self, mock_docker_client: MagicMock
-    ) -> None:
-        sandbox = DockerSandbox(docker_client=mock_docker_client)
-        with pytest.raises(EgressBlockedError):
-            sandbox.egress_policy.check("https://example.com")
-
-    async def test_egress_policy_allows_listed_destinations(
-        self, mock_docker_client: MagicMock
-    ) -> None:
-        sandbox = DockerSandbox(docker_client=mock_docker_client)
-        sandbox.egress_policy.check("https://api.openai.com/v1/chat")  # no error
-
-    async def test_create_does_not_block_event_loop(
-        self,
-        sandbox_config: SandboxConfig,
-        mock_docker_client: MagicMock,
-        sandbox: DockerSandbox,
-    ) -> None:
-        """Docker-py synchronous calls SHALL NOT block the asyncio event loop.
-
-        Before the fix, synchronous docker-py calls (create, start, reload)
-        blocked the event loop, preventing health checks, credential injection,
-        and message dispatch from running concurrently.
-        """
-        execution: list[str] = []
-
-        def slow_create(**kwargs: object) -> MagicMock:
-            import time
-
-            time.sleep(0.3)
-            fake = MagicMock()
-            fake.id = "c1"
-            fake.attrs = {
-                "NetworkSettings": {"Networks": {"bridge": {"IPAddress": "172.17.0.2"}}}
-            }
-            execution.append("docker_create")
-            return fake
-
-        async def quick_task() -> None:
-            await asyncio.sleep(0.05)
-            execution.append("quick_done")
-
-        mock_docker_client.containers.create = slow_create
-
-        async with asyncio.TaskGroup() as tg:
-            tg.create_task(sandbox.create(sandbox_config))
-            tg.create_task(quick_task())
-
-        assert execution == ["quick_done", "docker_create"], (
-            f"Expected 'quick_done' before 'docker_create', got {execution}. "
-            "Docker calls blocked the event loop."
-        )
-
-    async def test_is_running_does_not_block_event_loop(
-        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
-    ) -> None:
-        """DockerSandbox.is_running SHALL NOT block the event loop."""
-        execution: list[str] = []
-
-        def slow_get(container_id: str) -> MagicMock:
-            import time
-
-            time.sleep(0.3)
-            fake = MagicMock()
-            fake.status = "running"
-            execution.append("docker_get")
-            return fake
-
-        async def quick_task() -> None:
-            await asyncio.sleep(0.05)
-            execution.append("quick_done")
-
-        mock_docker_client.containers.get = slow_get
-
-        async with asyncio.TaskGroup() as tg:
-            tg.create_task(sandbox.is_running("c1"))
-            tg.create_task(quick_task())
-
-        assert execution == ["quick_done", "docker_get"], (
-            f"Expected 'quick_done' before 'docker_get', got {execution}. "
-            "Docker calls blocked the event loop."
-        )
-
-    async def test_destroy_does_not_block_event_loop(
-        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
-    ) -> None:
-        """DockerSandbox.destroy SHALL NOT block the event loop."""
-        execution: list[str] = []
-
-        def slow_get(container_id: str) -> MagicMock:
-            import time
-
-            time.sleep(0.3)
-            fake = MagicMock()
-            execution.append("docker_get")
-            return fake
-
-        async def quick_task() -> None:
-            await asyncio.sleep(0.05)
-            execution.append("quick_done")
-
-        mock_docker_client.containers.get = slow_get
-
-        async with asyncio.TaskGroup() as tg:
-            tg.create_task(sandbox.destroy("c1"))
-            tg.create_task(quick_task())
-
-        assert execution == ["quick_done", "docker_get"], (
-            f"Expected 'quick_done' before 'docker_get', got {execution}. "
-            "Docker calls blocked the event loop."
-        )
-
-    async def test_exec_run_does_not_block_event_loop(
-        self, mock_docker_client: MagicMock, sandbox: DockerSandbox
-    ) -> None:
-        """DockerSandbox.exec_run SHALL NOT block the event loop."""
-        execution: list[str] = []
-
-        def slow_get(container_id: str) -> MagicMock:
-            import time
-
-            time.sleep(0.3)
-            fake = MagicMock()
-            fake.exec_run.return_value = (0, b"ok")
-            execution.append("docker_get")
-            return fake
-
-        async def quick_task() -> None:
-            await asyncio.sleep(0.05)
-            execution.append("quick_done")
-
-        mock_docker_client.containers.get = slow_get
-
-        async with asyncio.TaskGroup() as tg:
-            tg.create_task(sandbox.exec_run("c1", "echo hi"))
-            tg.create_task(quick_task())
-
-        assert execution == ["quick_done", "docker_get"], (
-            f"Expected 'quick_done' before 'docker_get', got {execution}. "
-            "Docker calls blocked the event loop."
-        )
 
     def test_e2e_python_one_liner_is_valid_syntax(self) -> None:
         """The E2E test for blocked internet (AC-22) uses a single-line

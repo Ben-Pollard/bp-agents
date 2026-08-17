@@ -8,6 +8,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
+from tenacity import (
+    RetryError,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+)
 
 from bp_agents.platform.agent_client import OpenCodeClient
 from bp_agents.platform.agent_config import AgentConfig, to_opencode_json
@@ -82,38 +89,25 @@ async def _wait_for_health(
     base_url: str, max_retries: int = HEALTH_CHECK_RETRIES
 ) -> bool:
     async with httpx.AsyncClient(base_url=base_url) as client:
-        for attempt in range(max_retries):
-            try:
-                resp = await client.get("/api/health", timeout=5)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data.get("healthy") is True:
-                        logger.debug(
-                            "health check passed attempt=%d/%d",
-                            attempt + 1,
-                            max_retries,
-                        )
-                        return True
-                logger.debug(
-                    "health check attempt=%d/%d status=%d body=%s",
-                    attempt + 1,
-                    max_retries,
-                    resp.status_code,
-                    resp.text[:500],
-                )
-            except (
-                httpx.ConnectError,
-                httpx.TimeoutException,
-                httpx.RemoteProtocolError,
-            ) as exc:
-                logger.debug(
-                    "health check attempt=%d/%d %s",
-                    attempt + 1,
-                    max_retries,
-                    exc,
-                )
-            await asyncio.sleep(HEALTH_CHECK_INTERVAL)
-    return False
+
+        @retry(
+            stop=stop_after_attempt(max_retries),
+            wait=wait_fixed(HEALTH_CHECK_INTERVAL),
+            retry=retry_if_exception_type((httpx.HTTPError, RuntimeError)),
+            reraise=False,
+        )
+        async def _probe() -> None:
+            resp = await client.get("/api/health", timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            if not data.get("healthy"):
+                raise RuntimeError(f"unhealthy: {resp.text[:500]}")
+
+        try:
+            await _probe()
+            return True
+        except RetryError:
+            return False
 
 
 async def dispatch(

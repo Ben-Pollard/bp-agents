@@ -18,7 +18,6 @@ from bp_agents.platform.agent_config import AgentConfig
 from bp_agents.platform.dispatch import OUTCOME_FILENAME, dispatch
 from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
-from bp_agents.platform.sandbox.egress import EgressPolicy
 
 _SANDBOX_IMAGE = os.getenv("BP_SANDBOX_IMAGE", "opencode-agent:latest")
 
@@ -91,7 +90,7 @@ async def test_dispatch_say_hello_against_real_sandbox(
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("# TDD skill - write code and tests")
 
-    sandbox = DockerSandbox(egress_policy=EgressPolicy())
+    sandbox = DockerSandbox()
     cfg = SandboxConfig(
         image=_SANDBOX_IMAGE,
         workspace_path=workspace,

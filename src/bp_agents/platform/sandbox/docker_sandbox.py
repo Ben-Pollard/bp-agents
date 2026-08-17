@@ -11,7 +11,6 @@ from bp_agents.platform.sandbox.config import (
     SandboxConfig,
     SandboxSession,
 )
-from bp_agents.platform.sandbox.egress import EgressPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +26,8 @@ class DockerSandbox(Sandbox):
         self,
         docker_url: str = "unix://var/run/docker.sock",
         docker_client: docker.DockerClient | None = None,
-        egress_policy: EgressPolicy | None = None,
     ):
         self._client = docker_client or docker.DockerClient(base_url=docker_url)
-        self._egress_policy = egress_policy or EgressPolicy()
-
-    @property
-    def egress_policy(self) -> EgressPolicy:
-        return self._egress_policy
 
     async def create(self, config: SandboxConfig) -> SandboxSession:
         env = self._build_env(config)
@@ -56,13 +49,10 @@ class DockerSandbox(Sandbox):
             base_url = f"http://{container_ip}:8080"
             port = 8080
 
-        mapped_port = self._extract_port(container)
-
         return SandboxSession(
             container_id=container.id,
             port=port,
             base_url=base_url,
-            mapped_port=mapped_port,
         )
 
     @staticmethod
@@ -148,16 +138,6 @@ class DockerSandbox(Sandbox):
             pass
         return 8080
 
-    async def is_running(self, container_id: str) -> bool:
-        try:
-            container = await asyncio.to_thread(
-                self._client.containers.get, container_id
-            )
-            await asyncio.to_thread(container.reload)
-            return container.status == "running"
-        except docker.errors.NotFound:
-            return False
-
     async def destroy(self, container_id: str) -> None:
         try:
             container = await asyncio.to_thread(
@@ -166,8 +146,3 @@ class DockerSandbox(Sandbox):
             await asyncio.to_thread(container.remove, force=True, v=True)
         except docker.errors.NotFound:
             pass
-
-    async def exec_run(self, container_id: str, cmd: str) -> tuple[int, bytes]:
-        container = await asyncio.to_thread(self._client.containers.get, container_id)
-        result = await asyncio.to_thread(container.exec_run, cmd)
-        return result  # type: ignore[return-value]

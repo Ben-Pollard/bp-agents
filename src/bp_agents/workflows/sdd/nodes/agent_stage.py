@@ -280,17 +280,6 @@ class AgentStageNode:
                 "-m",
                 "initial commit",
             )
-            _run_git(
-                repo_path,
-                "-c",
-                "user.name=bp-agents",
-                "-c",
-                "user.email=bp-agents@localhost",
-                "commit",
-                "--allow-empty",
-                "-m",
-                "initial commit",
-            )
 
         try:
             _run_git(self._target_repo_path, "checkout", "-b", branch_name)

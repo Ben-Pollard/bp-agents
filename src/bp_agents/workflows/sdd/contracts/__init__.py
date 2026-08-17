@@ -35,16 +35,6 @@ class ReviewOutput(BaseModel):
     action: Literal["approved", "changes_requested"]
 
 
-class RevisionOutput(BaseModel):
-    status: Literal["DONE", "DONE_WITH_CONCERNS", "BLOCKED"]
-    summary: str
-    violations_addressed: list[dict]
-    violations_pushed_back: list[dict]
-    violations_unclear: list[dict]
-    test_results: dict
-    concerns: list[str]
-
-
 class QaOutput(BaseModel):
     status: Literal["PASS", "FAIL", "BLOCKED"]
     stage_results: dict

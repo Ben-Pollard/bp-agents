@@ -1,24 +1,16 @@
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
+from typing import TypeAlias
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class Session:
-    session_id: str
-
+Session: TypeAlias = str
 
 SESSION_POLL_INTERVAL = 2.0
 SESSION_TIMEOUT = 600
-
-
-def _unwrap_payload(data: dict) -> dict:
-    return data.get("data", data)
 
 
 class OpenCodeClient:
@@ -46,9 +38,9 @@ class OpenCodeClient:
     async def create_session(self) -> Session:
         resp = await self._client.post("/session")
         resp.raise_for_status()
-        data = _unwrap_payload(resp.json())
-        logger.debug("create_session response: %s", data)
-        return Session(session_id=data["id"])
+        parsed = resp.json()
+        logger.debug("create_session response: %s", parsed)
+        return parsed.get("data", parsed)["id"]
 
     async def send_message(
         self,
@@ -65,19 +57,20 @@ class OpenCodeClient:
             body["tools"] = tools
         logger.debug(
             "send_message session=%s body=%s",
-            session.session_id,
+            session,
             json.dumps(body),
         )
         resp = await self._client.post(
-            f"/session/{session.session_id}/message",
+            f"/session/{session}/message",
             json=body,
         )
         resp.raise_for_status()
 
-        msg = _unwrap_payload(resp.json())
+        parsed = resp.json()
+        msg = parsed.get("data", parsed)
         logger.debug(
             "send_message response session=%s state=%s finish=%s body=%s",
-            session.session_id,
+            session,
             msg.get("state", "?"),
             msg.get("info", {}).get("finish", "?"),
             json.dumps(msg),
@@ -96,7 +89,7 @@ class OpenCodeClient:
             if first_poll:
                 logger.debug(
                     "session_status first_poll session=%s state=%s finish=%s body=%s",
-                    session.session_id,
+                    session,
                     state,
                     finish,
                     json.dumps(status),
@@ -110,20 +103,21 @@ class OpenCodeClient:
         return msg
 
     async def session_status(self, session: Session) -> dict:
-        resp = await self._client.get(f"/session/{session.session_id}")
+        resp = await self._client.get(f"/session/{session}")
         resp.raise_for_status()
-        data = _unwrap_payload(resp.json())
+        parsed = resp.json()
+        data = parsed.get("data", parsed)
         logger.debug(
             "session_status session=%s state=%s finish=%s",
-            session.session_id,
+            session,
             data.get("state", "?"),
             data.get("info", {}).get("finish", "?"),
         )
         return data
 
     async def abort(self, session: Session) -> bool:
-        logger.debug("abort session=%s", session.session_id)
-        resp = await self._client.post(f"/session/{session.session_id}/abort")
+        logger.debug("abort session=%s", session)
+        resp = await self._client.post(f"/session/{session}/abort")
         resp.raise_for_status()
         return resp.status_code == 200
 

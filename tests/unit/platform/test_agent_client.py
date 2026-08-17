@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from bp_agents.platform.agent_client import OpenCodeClient, Session
+from bp_agents.platform.agent_client import OpenCodeClient
 
 
 @pytest.fixture
@@ -39,14 +39,14 @@ def client(mock_transport: httpx.MockTransport) -> OpenCodeClient:
 
 async def test_create_session_returns_session(client: OpenCodeClient) -> None:
     session = await client.create_session()
-    assert isinstance(session, Session)
-    assert session.session_id == "sess-1"
+    assert isinstance(session, str)
+    assert session == "sess-1"
 
 
 async def test_send_message_posts_to_session_message(
     client: OpenCodeClient,
 ) -> None:
-    session = Session(session_id="sess-1")
+    session = "sess-1"
     result = await client.send_message(
         session,
         parts=[{"type": "text", "text": "hi"}],
@@ -70,7 +70,7 @@ async def test_send_message_without_tools_omits_tools_in_body() -> None:
         "http://localhost:8080",
         client=httpx.AsyncClient(base_url="http://localhost:8080", transport=transport),
     )
-    session = Session(session_id="sess-1")
+    session = "sess-1"
     result = await client.send_message(
         session,
         parts=[{"type": "text", "text": "hi"}],
@@ -96,7 +96,7 @@ async def test_send_message_includes_tools_when_provided() -> None:
         "http://localhost:8080",
         client=httpx.AsyncClient(base_url="http://localhost:8080", transport=transport),
     )
-    session = Session(session_id="sess-1")
+    session = "sess-1"
     result = await client.send_message(
         session,
         parts=[{"type": "text", "text": "hi"}],
@@ -109,14 +109,14 @@ async def test_send_message_includes_tools_when_provided() -> None:
 
 
 async def test_session_status_returns_dict(client: OpenCodeClient) -> None:
-    session = Session(session_id="sess-1")
+    session = "sess-1"
     status = await client.session_status(session)
     assert status["id"] == "sess-1"
     assert status["state"] == "running"
 
 
 async def test_abort_returns_bool(client: OpenCodeClient) -> None:
-    session = Session(session_id="sess-1")
+    session = "sess-1"
     result = await client.abort(session)
     assert result is True
 

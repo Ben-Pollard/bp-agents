@@ -14,7 +14,3 @@ def test_tdd_output_is_base_model() -> None:
 
 def test_review_output_is_base_model() -> None:
     assert issubclass(contracts.ReviewOutput, BaseModel)
-
-
-def test_revision_output_is_base_model() -> None:
-    assert issubclass(contracts.RevisionOutput, BaseModel)

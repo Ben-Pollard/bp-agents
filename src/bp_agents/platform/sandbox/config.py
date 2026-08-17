@@ -1,14 +1,6 @@
-import socket
 from dataclasses import dataclass, field
 
 WORKSPACE_MOUNT_PATH = "/data/workspace"
-
-
-def _resolve_host(hostname: str) -> str:
-    try:
-        return socket.gethostbyname(hostname)
-    except OSError:
-        return hostname
 
 
 @dataclass
@@ -36,4 +28,3 @@ class SandboxSession:
     container_id: str
     port: int
     base_url: str
-    mapped_port: int | None = None

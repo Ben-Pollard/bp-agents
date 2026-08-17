@@ -155,25 +155,6 @@ class ContractBroker:
             attempts_remaining=remaining,
         )
 
-    async def await_acceptance(self, token: str) -> AcceptedContract:
-        binding = self._bindings.get(token)
-        if binding is None:
-            raise ValueError(f"unknown token: {token}")
-        if binding.invalidated:
-            raise ValueError(f"binding invalidated: {token}")
-        elapsed = time.time() - binding.created_at
-        if elapsed > binding.ttl_seconds:
-            raise ValueError(f"binding expired: {token}")
-        await binding.event.wait()
-        if binding.invalidated:
-            raise ValueError(f"binding invalidated: {token}")
-        return AcceptedContract(
-            workflow=binding.workflow,
-            stage=binding.stage,
-            run_id=binding.run_id,
-            contract=binding.accepted_contract or {},
-        )
-
     def check_acceptance(self, token: str) -> AcceptedContract | None:
         binding = self._bindings.get(token)
         if binding is None:
@@ -203,12 +184,6 @@ class ContractBroker:
         if binding.attempts >= binding.max_attempts:
             return "exhausted"
         return "pending"
-
-    def invalidate(self, token: str) -> None:
-        binding = self._bindings.pop(token, None)
-        if binding is not None:
-            binding.invalidated = True
-            binding.event.set()
 
 
 def create_mcp_server(

@@ -9,7 +9,6 @@ import yaml
 
 from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
-from bp_agents.platform.sandbox.egress import EgressBlockedError, EgressPolicy
 
 
 def _load_compose() -> dict:
@@ -28,30 +27,12 @@ def test_compose_egress_proxy_enforces_allowlist() -> None:
 
 
 def test_compose_allowlist_covers_default_allowlist() -> None:
-    """Every host in the EgressPolicy default allowlist must be present in
-    the egress blocker addon script's DEFAULT_ALLOWLIST, otherwise a
-    permitted destination would be blocked by the proxy while the policy
-    permits it."""
+    """The egress blocker addon script must define a non-empty
+    DEFAULT_ALLOWLIST so arbitrary internet is not reachable (AC-21/AC-22)."""
     root = Path(__file__).resolve().parents[2]
     script = (root / "scripts" / "egress_blocker.py").read_text()
-    script_hosts = set()
-    in_default = False
-    for line in script.splitlines():
-        stripped = line.strip()
-        if stripped == "DEFAULT_ALLOWLIST = [":
-            in_default = True
-            continue
-        if in_default:
-            if stripped == "]":
-                break
-            if stripped.startswith('"') and stripped.endswith('",'):
-                host = stripped.strip('",')
-                script_hosts.add(host)
-
-    default_hosts = set(EgressPolicy().allowlist)
-    assert (
-        default_hosts <= script_hosts
-    ), f"missing in egress_blocker.py DEFAULT_ALLOWLIST: {default_hosts - script_hosts}"
+    assert "DEFAULT_ALLOWLIST = [" in script
+    assert "api.openai.com" in script
 
 
 def test_egress_blocker_logs_ticket_unknown_suffix() -> None:
@@ -126,27 +107,8 @@ def test_egress_blocker_reads_env_var() -> None:
     ), "egress_blocker.py must define DEFAULT_ALLOWLIST as fallback"
 
 
-@pytest.fixture
-def egress_policy() -> EgressPolicy:
-    return EgressPolicy()
-
-
-def test_policy_blocks_arbitrary_internet(
-    egress_policy: EgressPolicy,
-) -> None:
-    with pytest.raises(EgressBlockedError):
-        egress_policy.check("https://example.com", ticket_id="hello-1")
-
-
-def test_policy_permits_pypi_and_llm(
-    egress_policy: EgressPolicy,
-) -> None:
-    egress_policy.check("https://pypi.org/simple/", ticket_id="hello-1")
-    egress_policy.check("https://api.openai.com/v1/chat", ticket_id="hello-1")
-
-
 def test_sandbox_lifecycle_with_policy() -> None:
-    """Pipeline-level: create, is_running, destroy with an
+    """Pipeline-level: create, destroy with an
     injected docker client, exercising the same path the orchestrator uses."""
     client = MagicMock()
     client.api.create_host_config.return_value = {}
@@ -156,7 +118,7 @@ def test_sandbox_lifecycle_with_policy() -> None:
     container.attrs = {}
     client.containers.create.return_value = container
 
-    sandbox = DockerSandbox(docker_client=client, egress_policy=EgressPolicy())
+    sandbox = DockerSandbox(docker_client=client)
 
     config = SandboxConfig(
         image="opencode-agent:latest",
@@ -170,9 +132,6 @@ def test_sandbox_lifecycle_with_policy() -> None:
 
     assert "runsc" == client.containers.create.call_args[1]["runtime"]
     assert "network" not in client.containers.create.call_args[1]
-
-    client.containers.get.return_value = _container_with_status("running")
-    assert _run(sandbox.is_running(session.container_id)) is True
 
     client.containers.get.return_value = container
     _run(sandbox.destroy(session.container_id))
