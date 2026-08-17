@@ -229,12 +229,21 @@ def create_mcp_server(
     ) -> dict:
         """Submit a stage output contract for validation.
 
-        Args:
-            token: The per-dispatch binding token.
-            payload: The contract payload to validate against the stage schema.
-        Returns:
-            A dict with accepted (bool), contract (dict|None), errors (list|None),
-            attempts_remaining (int|None), and terminal (bool).
+        The payload fields depend on the current stage. The binding token
+        determines which schema is enforced. Check the loaded skill's
+        Output section for the expected JSON shape.
+
+        Common shapes by stage:
+        - tdd:      {"status":"DONE"/"BLOCKED"/"FAIL", "summary":str,
+                      "test_results":dict, "concerns":list[str]}
+        - requesting-code-review:
+                    {"spec_compliance":bool, "code_quality":dict,
+                     "test_quality":dict, "operational":bool,
+                     "violations":list, "review_notes":list[str],
+                     "action":"approved"/"changes_requested"}
+        - qa:       {"status":"PASS"/"FAIL"/"BLOCKED", "stage_results":dict,
+                     "failed_acs":list, "blocked_items":list,
+                     "discovered_blockers":list, "summary":str}
         """
         return broker.submit(token, payload)
 

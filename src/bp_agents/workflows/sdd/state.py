@@ -1,6 +1,7 @@
 from typing import Literal, TypedDict
 
 from bp_agents.workflows.sdd.contracts import (
+    QaOutput,
     ReviewOutput,
     RevisionOutput,
     TddOutput,
@@ -27,6 +28,7 @@ class TicketPipelineState(TypedDict):
     tdd_output: TddOutput | None
     review_output: ReviewOutput | None
     revision_output: RevisionOutput | None
+    qa_output: QaOutput | None
     diff: str | None
     review_approved: bool | None
     verification_passed: bool | None
@@ -44,6 +46,7 @@ def initial_ticket_state(
         "tdd_output": None,
         "review_output": None,
         "revision_output": None,
+        "qa_output": None,
         "diff": None,
         "review_approved": None,
         "verification_passed": None,

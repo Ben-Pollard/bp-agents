@@ -32,7 +32,7 @@ SKILL_CONFIGS: dict[str, AgentConfig] = {
             "webfetch": False,
         },
     ),
-    "code_review": _skill_config(
+    "requesting-code-review": _skill_config(
         permissions={
             "read": {"*": "allow"},
             "bash": {"*": "allow"},
@@ -46,7 +46,7 @@ SKILL_CONFIGS: dict[str, AgentConfig] = {
             "webfetch": False,
         },
     ),
-    "revision": _skill_config(
+    "receiving-code-review": _skill_config(
         permissions={
             "read": {"*": "allow"},
             "bash": {"*": "allow"},
@@ -60,7 +60,13 @@ SKILL_CONFIGS: dict[str, AgentConfig] = {
             "webfetch": False,
         },
     ),
-    "minimizing_code": _skill_config(
+    "qa": _skill_config(
+        model="openrouter/anthropic/claude-sonnet-4",
+        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}},
+        tools={"bash": True, "read": True, "task": False, "webfetch": False},
+        mcps={"playwright": True},
+    ),
+    "minimizing-code": _skill_config(
         permissions={"read": {"*": "allow"}, "edit": {"*": "deny"}},
         tools={
             "bash": True,
@@ -69,15 +75,5 @@ SKILL_CONFIGS: dict[str, AgentConfig] = {
             "task": False,
             "webfetch": False,
         },
-    ),
-    "behavioral_verify": _skill_config(
-        model="openrouter/anthropic/claude-sonnet-4",
-        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}},
-        tools={"bash": True, "read": True, "task": False, "webfetch": False},
-        mcps={"playwright": True},
-    ),
-    "deterministic_gate": _skill_config(
-        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}},
-        tools={"bash": True, "read": True, "edit": False, "task": False},
     ),
 }

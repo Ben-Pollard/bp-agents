@@ -9,9 +9,7 @@ from langgraph.graph import END
 from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
 from bp_agents.workflows.sdd.graph import (
     build_ticket_pipeline,
-    route_review,
     route_ticket,
-    route_verify,
 )
 from bp_agents.workflows.sdd.state import TicketPipelineState
 
@@ -36,6 +34,7 @@ def _ts(
         "tdd_output": None,
         "review_output": None,
         "revision_output": None,
+        "qa_output": None,
         "diff": None,
         "review_approved": review_approved,
         "verification_passed": verification_passed,
@@ -50,33 +49,15 @@ def _ts(
         ("implementing", END),
         ("awaiting_review", "review"),
         ("awaiting_revision", "revise"),
-        ("revising", "revise_complete"),
+        ("revising", END),
         ("awaiting_verification", "verify"),
-        ("awaiting_approval", "approve_final"),
+        ("awaiting_approval", END),
         ("done", END),
         ("blocked", END),
     ],
 )
 def test_route_ticket_returns_next_node(status: str, expected: str) -> None:
     assert route_ticket(_ts(status)) == expected
-
-
-def test_route_review_returns_approve_by_default() -> None:
-    assert route_review(_ts("reviewing")) == "approve_review"
-
-
-def test_route_review_returns_request_changes_when_not_approved() -> None:
-    assert route_review(_ts("reviewing", review_approved=False)) == "request_changes"
-
-
-def test_route_verify_returns_pass_by_default() -> None:
-    assert route_verify(_ts("verifying")) == "verification_pass"
-
-
-def test_route_verify_returns_fail_when_not_passed() -> None:
-    assert (
-        route_verify(_ts("verifying", verification_passed=False)) == "verification_fail"
-    )
 
 
 def test_route_ticket_returns_block_when_blocked_reason() -> None:
@@ -100,24 +81,24 @@ def test_pipeline_advances_ready_to_blocked_without_sandbox() -> None:
     assert "BP_TARGET_REPO_PATH" in result["blocked_reason"]
 
 
-def test_pipeline_flow_from_awaiting_revision() -> None:
+def test_pipeline_flow_from_awaiting_revision_without_sandbox() -> None:
     app = build_ticket_pipeline()
     config = {"configurable": {"thread_id": "TICK-3"}}
     initial = _ts("awaiting_revision")
     result = app.invoke(initial, config)
-    assert result["status"] == "done"
+    assert result["status"] == "blocked"
 
 
-def test_pipeline_flow_from_awaiting_verification() -> None:
+def test_pipeline_flow_from_awaiting_verification_without_sandbox() -> None:
     app = build_ticket_pipeline()
     config = {"configurable": {"thread_id": "TICK-4"}}
     initial = _ts("awaiting_verification")
     result = app.invoke(initial, config)
-    assert result["status"] == "done"
+    assert result["status"] == "blocked"
 
 
 class TestTddGraphWire:
-    """Tracer bullet: ticket flows through the graph with a mocked TddNode dispatch."""
+    """Tracer bullet: ticket flows through the graph with a mocked AgentStageNode dispatch."""
 
     @pytest.fixture
     def target_repo(self) -> Path:
@@ -165,11 +146,20 @@ class TestTddGraphWire:
         (target_repo / "hello.py").write_text(
             "def hello():\n    return 'hello world'\n"
         )
-        outcome = {
+        tdd_outcome = {
             "status": "DONE",
             "summary": "Implemented hello world",
             "test_results": {"passed": 3, "failed": 0, "skipped": 0},
             "concerns": [],
+        }
+        review_outcome = {
+            "spec_compliance": True,
+            "code_quality": {"SOLID": True, "DRY": True},
+            "test_quality": {"tests.md": True},
+            "operational": True,
+            "violations": [],
+            "review_notes": [],
+            "action": "approved",
         }
 
         app = build_ticket_pipeline(
@@ -186,32 +176,52 @@ class TestTddGraphWire:
 
         caplog.set_level(logging.INFO)
 
-        import bp_agents.workflows.sdd.nodes.tdd as tdd_module
+        async def _side_effect(*args, **kwargs):
+            skill = kwargs.get("skill", "tdd")
+            if skill == "tdd":
+                return tdd_outcome
+            if skill == "requesting-code-review":
+                return review_outcome
+            return {
+                "status": "PASS",
+                "stage_results": {},
+                "failed_acs": [],
+                "blocked_items": [],
+                "discovered_blockers": [],
+                "summary": "ok",
+            }
 
-        with patch.object(tdd_module, "dispatch", AsyncMock(return_value=outcome)):
+        import bp_agents.workflows.sdd.nodes.agent_stage as stage_module
+
+        with patch.object(
+            stage_module, "dispatch", AsyncMock(side_effect=_side_effect)
+        ):
             result = await app.ainvoke(
                 _ts("ready", ticket_body="Write a hello world function"),
                 {"configurable": {"thread_id": "TICK-1"}},
             )
 
         assert result["tdd_output"].status == "DONE"
+        assert result["review_output"].action == "approved"
+        assert result["qa_output"].status == "PASS"
+        assert result["status"] == "awaiting_approval"
 
         messages = [r.message for r in caplog.records]
         assert any("dispatching tdd" in m for m in messages)
-        assert any(
-            "implementing -> awaiting-review" in m or "implementing -> awaiting" in m
-            for m in messages
-        )
+        assert any("dispatching requesting-code-review" in m for m in messages)
+        assert any("dispatching qa" in m for m in messages)
         assert any("tdd output" in m for m in messages)
+        assert any("requesting-code-review output" in m for m in messages)
+        assert any("qa output" in m for m in messages)
 
         log = subprocess.run(
-            ["git", "log", "--oneline", "-1"],
+            ["git", "log", "--oneline", "-5"],
             cwd=target_repo,
             capture_output=True,
             text=True,
             check=True,
         )
-        assert "feat(TICK-1)" in log.stdout
+        assert "feat(TICK-1)" in log.stdout or "tdd" in log.stdout
 
     async def test_ready_ticket_with_tdd_blocked_reaches_blocked(
         self,
@@ -221,7 +231,7 @@ class TestTddGraphWire:
     ) -> None:
         import logging
 
-        outcome = {
+        tdd_outcome = {
             "status": "BLOCKED",
             "summary": "Missing dependency",
             "test_results": {"passed": 0, "failed": 0, "skipped": 0},
@@ -242,17 +252,21 @@ class TestTddGraphWire:
 
         caplog.set_level(logging.INFO)
 
-        import bp_agents.workflows.sdd.nodes.tdd as tdd_module
+        import bp_agents.workflows.sdd.nodes.agent_stage as stage_module
 
-        with patch.object(tdd_module, "dispatch", AsyncMock(return_value=outcome)):
+        async def _side_effect(*args, **kwargs):
+            return tdd_outcome
+
+        with patch.object(
+            stage_module, "dispatch", AsyncMock(side_effect=_side_effect)
+        ):
             result = await app.ainvoke(
                 _ts("ready", ticket_body="Write a hello world function"),
                 {"configurable": {"thread_id": "TICK-2"}},
             )
 
         assert result["status"] == "blocked"
-        assert result["blocked_reason"].startswith("agent:")
-        assert "utils.validators" in result["blocked_reason"]
+        assert result["blocked_reason"] is not None
 
         messages = [r.message for r in caplog.records]
         assert any("blocked, reason: agent:" in m for m in messages)

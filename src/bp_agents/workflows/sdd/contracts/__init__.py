@@ -43,3 +43,12 @@ class RevisionOutput(BaseModel):
     violations_unclear: list[dict]
     test_results: dict
     concerns: list[str]
+
+
+class QaOutput(BaseModel):
+    status: Literal["PASS", "FAIL", "BLOCKED"]
+    stage_results: dict
+    failed_acs: list[dict]
+    blocked_items: list[dict]
+    discovered_blockers: list[dict]
+    summary: str

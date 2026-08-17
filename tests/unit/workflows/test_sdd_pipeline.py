@@ -36,18 +36,18 @@ def test_pipeline_with_sqlite_persistence() -> None:
 
             config = {"configurable": {"thread_id": "TICK-1"}}
             result = app.invoke(initial, config)
-            assert result["status"] == "done"
+            assert result["status"] == "blocked"
 
         with SqliteSaver.from_conn_string(db_path) as checkpointer:
             app2 = build_ticket_pipeline(checkpointer=checkpointer)
 
             saved_state = checkpointer.get({"configurable": {"thread_id": "TICK-1"}})
             assert saved_state is not None
-            assert saved_state["channel_values"]["status"] == "done"
+            assert saved_state["channel_values"]["status"] == "blocked"
 
             config = {"configurable": {"thread_id": "TICK-1"}}
             result2 = app2.invoke(None, config)
-            assert result2["status"] == "done"
+            assert result2["status"] == "blocked"
     finally:
         Path(db_path).unlink(missing_ok=True)
 
@@ -89,5 +89,5 @@ def test_multiple_tickets_no_interference() -> None:
 
         assert r1["ticket_id"] == "TICK-1"
         assert r2["ticket_id"] == "TICK-2"
-        assert r1["status"] == "done"
-        assert r2["status"] == "done"
+        assert r1["status"] == "blocked"
+        assert r2["status"] == "blocked"

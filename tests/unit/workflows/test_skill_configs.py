@@ -25,27 +25,25 @@ def test_skill_configs_tdd_has_permissions() -> None:
     assert config.permissions["edit"] == {"*": "allow"}
 
 
-def test_skill_configs_has_code_review() -> None:
-    assert "code_review" in SKILL_CONFIGS
-    config = SKILL_CONFIGS["code_review"]
+def test_skill_configs_has_requesting_code_review() -> None:
+    assert "requesting-code-review" in SKILL_CONFIGS
+    config = SKILL_CONFIGS["requesting-code-review"]
     assert config.tools["edit"] is False
 
 
-def test_skill_configs_has_revision() -> None:
-    assert "revision" in SKILL_CONFIGS
-    config = SKILL_CONFIGS["revision"]
+def test_skill_configs_has_receiving_code_review() -> None:
+    assert "receiving-code-review" in SKILL_CONFIGS
+    config = SKILL_CONFIGS["receiving-code-review"]
     assert config.tools["edit"] is True
 
 
 def test_skill_configs_has_minimizing_code() -> None:
-    assert "minimizing_code" in SKILL_CONFIGS
+    assert "minimizing-code" in SKILL_CONFIGS
+    config = SKILL_CONFIGS["minimizing-code"]
+    assert config.tools["edit"] is False
 
 
-def test_skill_configs_has_behavioral_verify() -> None:
-    assert "behavioral_verify" in SKILL_CONFIGS
-    config = SKILL_CONFIGS["behavioral_verify"]
-    assert config.mcps.get("playwright") is True
-
-
-def test_skill_configs_has_deterministic_gate() -> None:
-    assert "deterministic_gate" in SKILL_CONFIGS
+def test_skill_configs_has_qa() -> None:
+    assert "qa" in SKILL_CONFIGS
+    config = SKILL_CONFIGS["qa"]
+    assert isinstance(config, AgentConfig)

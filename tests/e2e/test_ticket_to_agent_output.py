@@ -1,15 +1,8 @@
-"""E2E test: full pathway from Redmine ticket to sandbox agent activity.
+"""E2E test: Redmine ticket → TDD sandbox → MCP contract fulfilled.
 
-Composes the orchestator stack (redmine + egress-proxy + orchestrator),
-creates a Redmine ticket, and monitors orchestrator logs until the
-sandbox agent produces its first output (LLM call, tool invocation, or
-response), confirming the pathway:
-  ticket → poller → graph → TddNode → dispatch → sandbox → first message
-
-This tests the real networking: the orchestrator runs inside Docker on
-bp_agents, dispatch creates the sandbox on the same network, the sandbox
-routes outbound traffic through the egress proxy, and --print-logs output
-streams back to the orchestrator's stdout.
+Composes the orchestrator stack, creates a Redmine ticket, waits for the
+TDD stage to complete with a validated MCP contract. Exercises the real
+networking (sandbox_net, egress proxy, DNS) that mocks can't catch.
 """
 
 import logging
@@ -27,7 +20,7 @@ _SANDBOX_IMAGE = "bp-agents-test-sandbox:latest"
 _REDMINE_URL = "http://localhost:8082"
 _REDMINE_AUTH = ("admin", "admin")
 _POLL_INTERVAL = 5
-_LOG_TIMEOUT = 180
+_LOG_TIMEOUT = 300
 _CONTAINER_NAME_PATTERN = r"bp.agents-orchestrator-\d+"
 
 logger = logging.getLogger(__name__)
@@ -84,10 +77,9 @@ def _orchestrator_container_id() -> str:
     raise RuntimeError("orchestrator container not found")
 
 
-def _read_logs_since(container_id: str, since: float) -> str:
-    since_str = str(int(since))
+def _orchestrator_logs(container_id: str) -> str:
     result = subprocess.run(
-        ["docker", "logs", "--since", since_str, container_id],
+        ["docker", "logs", "--tail", "2000", container_id],
         capture_output=True,
         text=True,
     )
@@ -97,26 +89,11 @@ def _read_logs_since(container_id: str, since: float) -> str:
 def _wait_for_orchestrator_ready(container_id: str, timeout: float = 60.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        logs = _read_logs_since(container_id, time.monotonic() - 10)
+        logs = _orchestrator_logs(container_id)
         if "runner starting" in logs.lower():
             return
         time.sleep(2)
-    raise RuntimeError(
-        "orchestrator did not start within %ss:\n%s",
-        timeout,
-        _read_logs_since(container_id, time.monotonic() - 60),
-    )
-
-
-def _container_logs_contain(container_id: str, marker: str) -> list[str]:
-    result = subprocess.run(
-        ["docker", "logs", "--tail", "500", container_id],
-        capture_output=True,
-        text=True,
-    )
-    return [
-        line for line in (result.stdout + result.stderr).splitlines() if marker in line
-    ]
+    raise RuntimeError(f"orchestrator did not start within {timeout}s")
 
 
 @pytest.fixture(scope="module")
@@ -200,7 +177,7 @@ def e2e_stack() -> Generator[Path, None, None]:
 
 
 @pytest.mark.e2e
-def test_full_pathway_produces_agent_output(e2e_stack: Path) -> None:
+def test_full_pipeline_completes_all_stages(e2e_stack: Path) -> None:
     cid = _orchestrator_container_id()
     _wait_for_orchestrator_ready(cid)
 
@@ -222,8 +199,11 @@ def test_full_pathway_produces_agent_output(e2e_stack: Path) -> None:
         json={
             "issue": {
                 "project_id": "default",
-                "subject": "Write a hello function",
-                "description": "write a hello() function that returns 'hello world' and a test for it",
+                "subject": "Write a factorial function",
+                "description": (
+                    "Write a function factorial(n) that returns n! "
+                    "iteratively. Handle n=0. Write tests first."
+                ),
                 "status_id": ready_id,
             }
         },
@@ -233,28 +213,28 @@ def test_full_pathway_produces_agent_output(e2e_stack: Path) -> None:
     logger.info("Created Redmine ticket %s", issue_id)
 
     deadline = time.monotonic() + _LOG_TIMEOUT
-    markers = [
-        "stream providerID=",
-        "evaluated permission",
-        "exiting loop",
-        "[sandbox]",
-    ]
 
     while time.monotonic() < deadline:
-        logs = _container_logs_contain(cid, "[sandbox]")
-        if logs:
-            agent_lines = [line for line in logs if any(m in line for m in markers)]
-            if agent_lines:
-                logger.info("Agent activity detected in orchestrator logs")
-                for line in agent_lines[:5]:
-                    logger.info("  %s", line.strip())
-                return
+        logs = _orchestrator_logs(cid)
+        if "tdd output  contract=" in logs:
+            logger.info("  TDD contract fulfilled for ticket %s", issue_id)
+            break
+        time.sleep(5)
+    else:
+        all_logs = _orchestrator_logs(cid)
+        pytest.fail(
+            f"TDD did not complete within {_LOG_TIMEOUT}s.\n"
+            f"Last 30 log lines:\n" + "\n".join(all_logs.splitlines()[-30:])
+        )
 
-        time.sleep(1)
-
-    all_logs = _container_logs_contain(cid, "")
-    log_snippet = "\n".join(all_logs[-50:])
-    pytest.fail(
-        f"No agent activity detected within {_LOG_TIMEOUT}s.\n"
-        f"Last 50 orchestrator log lines:\n{log_snippet}"
+    r = httpx.get(
+        f"{_REDMINE_URL}/issues/{issue_id}.json",
+        headers={"X-Redmine-API-Key": api_key},
     )
+    r.raise_for_status()
+    final_status = r.json()["issue"]["status"]["name"]
+    assert final_status in (
+        "awaiting_review",
+        "awaiting_verification",
+        "awaiting_approval",
+    ), f"Expected ticket to advance past implementing, got {final_status}"

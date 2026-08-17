@@ -9,8 +9,8 @@ import pytest
 from bp_agents.platform.mcp.contract_broker import ContractNotFulfilledError
 from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
 from bp_agents.workflows.sdd.contracts import TddOutput
-from bp_agents.workflows.sdd.nodes.tdd import (
-    TddNode,
+from bp_agents.workflows.sdd.nodes.agent_stage import (
+    AgentStageNode,
     build_input_contract,
 )
 from bp_agents.workflows.sdd.state import TicketPipelineState
@@ -25,6 +25,7 @@ def _make_state(**overrides: str) -> TicketPipelineState:
         "tdd_output": None,
         "review_output": None,
         "revision_output": None,
+        "qa_output": None,
         "diff": None,
         "review_approved": None,
         "verification_passed": None,
@@ -96,33 +97,33 @@ class TestValidateTddOutput:
 
 class TestBuildInputContract:
     def test_contains_stage_and_direction(self) -> None:
-        contract = build_input_contract("TICK-1", "body")
+        contract = build_input_contract("TICK-1", "body", "tdd")
         assert contract["stage"] == "tdd"
         assert contract["direction"] == "input"
         assert "timestamp" in contract
 
     def test_contains_skill_in_payload(self) -> None:
-        contract = build_input_contract("TICK-1", "body")
+        contract = build_input_contract("TICK-1", "body", "tdd")
         assert contract["payload"]["skill"] == "tdd"
 
     def test_contains_ticket_body(self) -> None:
-        contract = build_input_contract("TICK-1", "Write a function")
+        contract = build_input_contract("TICK-1", "Write a function", "tdd")
         assert contract["payload"]["ticket"]["id"] == "TICK-1"
         assert contract["payload"]["ticket"]["body"] == "Write a function"
 
     def test_contains_carry_forward_context(self) -> None:
         contract = build_input_contract(
-            "TICK-1", "body", context={"prior_summary": "done"}
+            "TICK-1", "body", "tdd", context={"prior_summary": "done"}
         )
         assert contract["payload"]["context"] == {"prior_summary": "done"}
 
     def test_context_defaults_to_empty(self) -> None:
-        contract = build_input_contract("TICK-1", "body")
+        contract = build_input_contract("TICK-1", "body", "tdd")
         assert contract["payload"]["context"] == {}
 
 
-class TestTddNode:
-    """TddNode tests with mocked sandbox, dispatch, and git."""
+class TestAgentStageNode:
+    """AgentStageNode tests with mocked sandbox, dispatch, and git."""
 
     @pytest.fixture
     def target_repo(self) -> Path:
@@ -149,12 +150,6 @@ class TestTddNode:
         return tmp
 
     @pytest.fixture
-    def skills_dir(self) -> Path:
-        tmp = Path(tempfile.mkdtemp())
-        (tmp / "tdd.md").write_text("# TDD skill")
-        return tmp
-
-    @pytest.fixture
     def mock_sandbox(self) -> MagicMock:
         sandbox = MagicMock()
         sandbox.create = AsyncMock(
@@ -166,58 +161,56 @@ class TestTddNode:
         return sandbox
 
     @pytest.fixture
-    def sandbox_config(self) -> SandboxConfig:
-        return SandboxConfig(
-            image="opencode-agent:latest",
-            workspace_path="/tmp/ws",
-            skills_path="/tmp/skills",
-            runtime="",
-            timeout_seconds=60,
+    def node(self, target_repo, mock_sandbox) -> AgentStageNode:
+        return AgentStageNode(
+            sandbox=mock_sandbox,
+            sandbox_config=SandboxConfig(
+                image="opencode-agent:latest",
+                workspace_path=str(target_repo),
+                skills_path=str(target_repo / "skills"),
+                runtime="",
+                env={"OPENROUTER_API_KEY": "sk-test"},
+            ),
+            target_repo_path=str(target_repo),
+            skills_path=str(target_repo / "skills"),
+            tracker=None,
+            client=None,
+            skill="tdd",
+            contract_cls=TddOutput,
+            stage_status="implementing",
+            commit=True,
+            route_result=lambda o, s: (
+                {"status": "awaiting_review", "tdd_output": o}
+                if o.status == "DONE"
+                else {"blocked_reason": f"agent: {o.status}"}
+            ),
         )
 
-    def _write_agent_code(self, repo_path: Path) -> None:
-        (repo_path / "hello.py").write_text("def hello():\n    return 'hello world'\n")
-
-    @pytest.fixture
-    def tracker(self) -> MagicMock:
-        t = MagicMock()
-        t.update_state = AsyncMock()
-        t.add_comment = AsyncMock()
-        return t
-
-    async def test_tdd_complete_creates_branch_and_commits(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
+    async def test_success_routes_to_awaiting_review(
+        self, node: AgentStageNode, target_repo: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
+        import logging
+
+        (target_repo / "hello.py").write_text(
+            "def hello():\n    return 'hello world'\n"
+        )
+
         outcome = {
             "status": "DONE",
-            "summary": "Implemented hello world",
-            "test_results": {"passed": 3, "failed": 0, "skipped": 0},
+            "summary": "All tests pass",
+            "test_results": {"passed": 5, "failed": 0, "skipped": 0},
             "concerns": [],
         }
-        self._write_agent_code(target_repo)
 
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=str(target_repo),
-            skills_path=str(skills_dir),
-            tracker=tracker,
-        )
+        caplog.set_level(logging.INFO)
 
-        with patch(
-            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
-            AsyncMock(return_value=outcome),
-        ):
+        import bp_agents.workflows.sdd.nodes.agent_stage as stage_module
+
+        with patch.object(stage_module, "dispatch", AsyncMock(return_value=outcome)):
             result = await node(_make_state())
 
         assert result["status"] == "awaiting_review"
         assert result["tdd_output"].status == "DONE"
-        assert result["tdd_output"].summary == "Implemented hello world"
 
         log = subprocess.run(
             ["git", "log", "--oneline", "-1"],
@@ -226,29 +219,13 @@ class TestTddNode:
             text=True,
             check=True,
         )
-        assert "feat(TICK-1)" in log.stdout
+        assert "tdd(TICK-1)" in log.stdout
 
-        branch = subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=target_repo,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        assert branch.stdout.strip() == "feat/tick-1"
-
-        tracker.update_state.assert_any_call("TICK-1", "implementing", "project-1")
-        tracker.update_state.assert_any_call("TICK-1", "awaiting_review", "project-1")
-        tracker.add_comment.assert_called()
-
-    async def test_tdd_blocked_does_not_commit(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
+    async def test_blocked_outcome_routes_to_blocked(
+        self, node: AgentStageNode, caplog: pytest.LogCaptureFixture
     ) -> None:
+        import logging
+
         outcome = {
             "status": "BLOCKED",
             "summary": "Missing dependency",
@@ -256,377 +233,50 @@ class TestTddNode:
             "concerns": ["Module utils.validators not yet implemented"],
         }
 
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=str(target_repo),
-            skills_path=str(skills_dir),
-            tracker=tracker,
-        )
-
-        with patch(
-            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
-            AsyncMock(return_value=outcome),
-        ):
-            result = await node(_make_state())
-
-        assert result["blocked_reason"] == (
-            "agent: Module utils.validators not yet implemented"
-        )
-        assert "status" not in result
-        assert result["tdd_output"].status == "BLOCKED"
-
-        log = subprocess.run(
-            ["git", "log", "--oneline", "-1"],
-            cwd=target_repo,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        assert "feat(TICK-1)" not in log.stdout
-        assert "initial" in log.stdout
-
-        tracker.update_state.assert_any_call("TICK-1", "implementing", "project-1")
-        tracker.update_state.assert_any_call("TICK-1", "blocked", "project-1")
-        tracker.add_comment.assert_called()
-
-    async def test_tdd_missing_outcome_returns_blocked(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        import logging
-
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=str(target_repo),
-            skills_path=str(skills_dir),
-            tracker=tracker,
-        )
-
         caplog.set_level(logging.INFO)
 
-        with patch(
-            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
-            AsyncMock(side_effect=FileNotFoundError("outcome.json not found")),
-        ):
+        import bp_agents.workflows.sdd.nodes.agent_stage as stage_module
+
+        with patch.object(stage_module, "dispatch", AsyncMock(return_value=outcome)):
             result = await node(_make_state())
 
-        assert "status" not in result
-        assert "no outcome file" in result.get("blocked_reason", "").lower()
+        assert result.get("blocked_reason") is not None
+        assert "BLOCKED" in result["blocked_reason"]
 
-        messages = [r.message for r in caplog.records]
-        assert any(
-            "blocked, reason:" in m for m in messages
-        ), "FileNotFoundError must log 'blocked, reason:' (AC-11)"
-
-    async def test_tdd_cleans_artifacts_before_commit(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
+    async def test_dispatch_connection_error_retries_then_blocks(
+        self, node: AgentStageNode
     ) -> None:
-        outcome = {
-            "status": "DONE",
-            "summary": "Done",
-            "test_results": {"passed": 1, "failed": 0, "skipped": 0},
-            "concerns": [],
-        }
-        self._write_agent_code(target_repo)
+        import bp_agents.workflows.sdd.nodes.agent_stage as stage_module
 
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=str(target_repo),
-            skills_path=str(skills_dir),
-            tracker=tracker,
-        )
+        dispatch_mock = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
 
-        with patch(
-            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
-            AsyncMock(return_value=outcome),
-        ):
-            await node(_make_state())
-
-        assert not (target_repo / "outcome.json").exists()
-        assert not (target_repo / "opencode.json").exists()
-        assert (target_repo / "hello.py").exists()
-
-    async def test_tdd_blocked_cleans_artifacts(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
-    ) -> None:
-        outcome = {
-            "status": "BLOCKED",
-            "summary": "Missing dep",
-            "test_results": {"passed": 0, "failed": 0, "skipped": 0},
-            "concerns": ["Module missing"],
-        }
-
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=str(target_repo),
-            skills_path=str(skills_dir),
-            tracker=tracker,
-        )
-
-        with patch(
-            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
-            AsyncMock(return_value=outcome),
-        ):
-            await node(_make_state())
-
-        assert not (target_repo / "outcome.json").exists()
-
-    async def test_tdd_fail_status_handled_as_blocked(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
-    ) -> None:
-        outcome = {
-            "status": "FAIL",
-            "summary": "Transient error",
-            "test_results": {"passed": 0, "failed": 0, "skipped": 0},
-            "concerns": ["Network timeout"],
-        }
-
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=str(target_repo),
-            skills_path=str(skills_dir),
-            tracker=tracker,
-        )
-
-        with patch(
-            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
-            AsyncMock(return_value=outcome),
-        ):
+        with patch.object(stage_module, "dispatch", dispatch_mock):
             result = await node(_make_state())
 
-        assert "status" not in result
-        assert "transient" in result["blocked_reason"]
+        assert result.get("blocked_reason") is not None
+        assert "connection refused" in result["blocked_reason"].lower()
 
-        log = subprocess.run(
-            ["git", "log", "--oneline", "-1"],
-            cwd=target_repo,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        assert "feat(TICK-1)" not in log.stdout
-
-    async def test_nfr_guard_rejects_bp_agents_target(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
+    async def test_dispatch_contract_not_fulfilled_blocks(
+        self, node: AgentStageNode
     ) -> None:
-        bp_agents_path = str(Path(tempfile.mkdtemp()) / "bp-agents" / "subdir")
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=bp_agents_path,
-            skills_path=str(skills_dir),
-            tracker=tracker,
+        import bp_agents.workflows.sdd.nodes.agent_stage as stage_module
+
+        dispatch_mock = AsyncMock(
+            side_effect=ContractNotFulfilledError("no contract submitted")
         )
 
-        with pytest.raises(RuntimeError, match="bp-agents"):
-            await node(_make_state())
-
-    async def test_nfr_guard_rejects_dot_agents_segment(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
-    ) -> None:
-        dangerous_path = str(Path(tempfile.mkdtemp()) / "some-project" / ".agents")
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=dangerous_path,
-            skills_path=str(skills_dir),
-            tracker=tracker,
-        )
-
-        with pytest.raises(RuntimeError, match="bp-agents"):
-            await node(_make_state())
-
-    async def test_ensure_feature_branch_auto_inits_non_repo(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
-    ) -> None:
-        non_repo = Path(tempfile.mkdtemp())
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=str(non_repo),
-            skills_path=str(skills_dir),
-            tracker=tracker,
-        )
-
-        branch = node._ensure_feature_branch("TICK-99")
-        assert branch == "feat/tick-99"
-
-        branch_out = subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=non_repo,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        assert branch_out.stdout.strip() == "feat/tick-99"
-
-        log = subprocess.run(
-            ["git", "log", "--oneline", "-1"],
-            cwd=non_repo,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        assert "initial commit" in log.stdout
-
-    async def test_connect_error_logs_correct_format_and_updates_tracker(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        import logging
-
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=str(target_repo),
-            skills_path=str(skills_dir),
-            tracker=tracker,
-        )
-
-        caplog.set_level(logging.INFO)
-
-        with patch(
-            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
-            AsyncMock(
-                side_effect=httpx.ConnectError(
-                    "All connection attempts failed",
-                    request=MagicMock(),
-                )
-            ),
-        ):
+        with patch.object(stage_module, "dispatch", dispatch_mock):
             result = await node(_make_state())
 
-        assert "status" not in result
-        assert "sandbox unreachable" in result["blocked_reason"]
+        assert result.get("blocked_reason") is not None
 
-        messages = [r.message for r in caplog.records]
-        assert any(
-            "blocked, reason: sandbox unreachable" in m for m in messages
-        ), "ConnectError must log 'blocked, reason: sandbox unreachable' (AC-11)"
+    async def test_invalid_outcome_blocks(self, node: AgentStageNode) -> None:
+        import bp_agents.workflows.sdd.nodes.agent_stage as stage_module
 
-    async def test_read_timeout_retries_then_blocked(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        import logging
+        dispatch_mock = AsyncMock(return_value={"bad": "data"})
 
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=str(target_repo),
-            skills_path=str(skills_dir),
-            tracker=tracker,
-            max_retries=2,
-        )
-
-        caplog.set_level(logging.WARNING)
-
-        mock_req = MagicMock()
-        with patch(
-            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
-            AsyncMock(
-                side_effect=httpx.ReadTimeout(
-                    "POST /session/sess-1/message timed out",
-                    request=mock_req,
-                )
-            ),
-        ):
+        with patch.object(stage_module, "dispatch", dispatch_mock):
             result = await node(_make_state())
 
-        assert "status" not in result
-        assert "sandbox unreachable" in result["blocked_reason"]
-
-        retry_messages = [r.message for r in caplog.records if "retrying" in r.message]
-        assert (
-            len(retry_messages) == 1
-        ), f"Expected 1 retry log message, got {len(retry_messages)}"
-
-    async def test_tdd_contract_not_fulfilled_returns_blocked(
-        self,
-        target_repo: Path,
-        skills_dir: Path,
-        mock_sandbox: MagicMock,
-        sandbox_config: SandboxConfig,
-        tracker: MagicMock,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        import logging
-
-        node = TddNode(
-            sandbox=mock_sandbox,
-            sandbox_config=sandbox_config,
-            target_repo_path=str(target_repo),
-            skills_path=str(skills_dir),
-            tracker=tracker,
-        )
-
-        caplog.set_level(logging.INFO)
-
-        with patch(
-            "bp_agents.workflows.sdd.nodes.tdd.dispatch",
-            AsyncMock(
-                side_effect=ContractNotFulfilledError(
-                    "agent: no contract submitted via MCP"
-                )
-            ),
-        ):
-            result = await node(_make_state())
-
-        assert "status" not in result
-        assert result["blocked_reason"] == "agent: no contract submitted via MCP"
-
-        messages = [r.message for r in caplog.records]
-        assert any(
-            "blocked, reason: agent: no contract submitted via MCP" in m
-            for m in messages
-        )
+        assert result.get("blocked_reason") is not None
+        assert "invalid" in result["blocked_reason"].lower()

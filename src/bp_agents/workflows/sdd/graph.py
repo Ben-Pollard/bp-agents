@@ -1,12 +1,12 @@
-import functools
+import json
 import logging
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 
-from bp_agents.workflows.sdd.nodes.tdd import TddNode
+from bp_agents.workflows.sdd.contracts import QaOutput, ReviewOutput, TddOutput
+from bp_agents.workflows.sdd.nodes.agent_stage import AgentStageNode
 from bp_agents.workflows.sdd.state import (
     TicketPipelineState,
 )
@@ -19,99 +19,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_STUB_NOT_CONFIGURED_REASON = (
-    "BP_TARGET_REPO_PATH not configured — set it to a target project "
-    "repository path and ensure BP_SANDBOX_IMAGE is built"
-)
-
-
-def _log(state: TicketPipelineState, to: str) -> None:
-    from_ = state["status"]
-    project = state.get("project", "unknown")
-    logger.info(
-        "ticket %s: %s -> %s  project=%s  [%s]",
-        state["ticket_id"],
-        from_,
-        to,
-        project,
-        datetime.now(timezone.utc).isoformat(),
-    )
-
-
-def _advance(state: TicketPipelineState, to: str) -> dict:
-    _log(state, to)
-    return {"status": to}
-
-
-def _node(target: str, tracker: "Tracker | None" = None):
-    if tracker is not None:
-
-        @functools.wraps(lambda: None)
-        async def node_fn(state: TicketPipelineState) -> dict:
-            result = _advance(state, target)
-            await tracker.update_state(
-                state["ticket_id"], target, state.get("project", "unknown")
-            )
-            return result
-
-    else:
-
-        @functools.wraps(lambda: None)
-        def node_fn(state: TicketPipelineState) -> dict:
-            return _advance(state, target)
-
-    node_fn.__name__ = f"node_{target}"
-    return node_fn
-
-
-def _stub_implement_node(tracker: "Tracker | None" = None):
-    """Stub 'implement' node used when the TDD pipeline is not configured.
-
-    Blocks the ticket instead of silently advancing it through the pipeline
-    to 'done', which would create a false positive without any real agent
-    work (QA finding).
-    """
-
-    if tracker is not None:
-
-        @functools.wraps(lambda: None)
-        async def node_fn(state: TicketPipelineState) -> dict:
-            ticket_id = state["ticket_id"]
-            project = state.get("project", "unknown")
-            logger.info(
-                "ticket %s: blocked, reason: %s",
-                ticket_id,
-                _STUB_NOT_CONFIGURED_REASON,
-            )
-            await tracker.update_state(ticket_id, "blocked", project)
-            return {
-                "blocked_reason": _STUB_NOT_CONFIGURED_REASON,
-            }
-
-    else:
-
-        @functools.wraps(lambda: None)
-        def node_fn(state: TicketPipelineState) -> dict:
-            logger.info(
-                "ticket %s: blocked, reason: %s",
-                state["ticket_id"],
-                _STUB_NOT_CONFIGURED_REASON,
-            )
-            return {
-                "blocked_reason": _STUB_NOT_CONFIGURED_REASON,
-            }
-
-    node_fn.__name__ = "node_implement"
-    return node_fn
-
-
 ROUTE_MAP: dict[str, str] = {
     "ready": "implement",
     "awaiting_review": "review",
     "awaiting_revision": "revise",
-    "revising": "revise_complete",
     "awaiting_verification": "verify",
-    "awaiting_approval": "approve_final",
 }
 
 
@@ -119,18 +31,6 @@ def route_ticket(state: TicketPipelineState) -> str:
     if state.get("blocked_reason") and state["status"] != "blocked":
         return "block"
     return ROUTE_MAP.get(state["status"], END)
-
-
-def route_review(state: TicketPipelineState) -> str:
-    if state.get("review_approved") is False:
-        return "request_changes"
-    return "approve_review"
-
-
-def route_verify(state: TicketPipelineState) -> str:
-    if state.get("verification_passed") is False:
-        return "verification_fail"
-    return "verification_pass"
 
 
 def build_ticket_pipeline(
@@ -147,14 +47,15 @@ def build_ticket_pipeline(
 ):
     builder = StateGraph(TicketPipelineState)
 
-    use_tdd = (
+    use_stages = (
         sandbox is not None
         and sandbox_config is not None
         and target_repo_path is not None
     )
 
-    if use_tdd:
-        implement_node: Any = TddNode(
+    base_kwargs: dict[str, Any] = {}
+    if use_stages:
+        base_kwargs = dict(
             sandbox=sandbox,
             sandbox_config=sandbox_config,
             target_repo_path=target_repo_path,
@@ -165,38 +66,122 @@ def build_ticket_pipeline(
             broker=broker,
             mcp_port=mcp_port,
         )
-    else:
-        implement_node = _stub_implement_node(tracker)
-        logger.warning(
-            "TDD pipeline not configured — sandbox is None. "
-            "Set BP_TARGET_REPO_PATH, BP_SANDBOX_IMAGE, and BP_SKILLS_PATH "
-            "to enable real agent dispatch. %s",
-            _STUB_NOT_CONFIGURED_REASON,
+
+    if use_stages:
+        implement_node: Any = AgentStageNode(
+            **base_kwargs,
+            skill="tdd",
+            contract_cls=TddOutput,
+            stage_status="implementing",
+            commit=True,
+            route_result=lambda o, s: (
+                {"status": "awaiting_review", "tdd_output": o}
+                if o.status == "DONE"
+                else {"blocked_reason": f"agent: {o.status}"}
+            ),
         )
+        review_node: Any = AgentStageNode(
+            **base_kwargs,
+            skill="requesting-code-review",
+            contract_cls=ReviewOutput,
+            stage_status="reviewing",
+            commit=False,
+            route_result=lambda o, s: (
+                {
+                    "status": "awaiting_verification",
+                    "review_output": o,
+                    "review_approved": True,
+                }
+                if o.action == "approved"
+                else {
+                    "status": "awaiting_revision",
+                    "review_output": o,
+                    "review_approved": False,
+                }
+            ),
+        )
+        revise_node: Any = AgentStageNode(
+            **base_kwargs,
+            skill="receiving-code-review",
+            contract_cls=TddOutput,
+            stage_status="revising",
+            commit=True,
+            extra_prompt=lambda s: (
+                f"Review feedback:\n"
+                f"{json.dumps(s.get('review_output', {}).model_dump() if s.get('review_output') else {}, indent=2)}"
+                if s.get("review_output")
+                else ""
+            ),
+            route_result=lambda o, s: (
+                {"status": "awaiting_review", "tdd_output": o}
+                if o.status == "DONE"
+                else {"blocked_reason": f"agent: {o.status}"}
+            ),
+        )
+        qa_node: Any = AgentStageNode(
+            **base_kwargs,
+            skill="qa",
+            contract_cls=QaOutput,
+            stage_status="verifying",
+            commit=False,
+            route_result=lambda o, s: (
+                {
+                    "status": "awaiting_approval",
+                    "qa_output": o,
+                    "verification_passed": True,
+                }
+                if o.status == "PASS"
+                else {
+                    "status": "awaiting_revision",
+                    "qa_output": o,
+                    "verification_passed": False,
+                }
+            ),
+        )
+    else:
+
+        def _stub_block(state: TicketPipelineState) -> dict:
+            logger.info(
+                "ticket %s: blocked, reason: BP_TARGET_REPO_PATH not configured",
+                state["ticket_id"],
+            )
+            return {"blocked_reason": "BP_TARGET_REPO_PATH not configured"}
+
+        implement_node = _stub_block
+        review_node = _stub_block
+        revise_node = _stub_block
+        qa_node = _stub_block
 
     builder.add_node("implement", implement_node)
-    builder.add_node("review", _node("reviewing", tracker))
-    builder.add_node("approve_review", _node("awaiting_verification", tracker))
-    builder.add_node("request_changes", _node("awaiting_revision", tracker))
-    builder.add_node("revise", _node("revising", tracker))
-    builder.add_node("revise_complete", _node("awaiting_verification", tracker))
-    builder.add_node("verify", _node("verifying", tracker))
-    builder.add_node("verification_pass", _node("awaiting_approval", tracker))
-    builder.add_node("verification_fail", _node("awaiting_revision", tracker))
-    builder.add_node("approve_final", _node("done", tracker))
+    builder.add_node("review", review_node)
+    builder.add_node("revise", revise_node)
+    builder.add_node("verify", qa_node)
     builder.add_node("block", _node("blocked", tracker))
 
     builder.add_conditional_edges(START, route_ticket)
-    builder.add_conditional_edges("implement", route_ticket)
-    builder.add_conditional_edges("review", route_review)
-    builder.add_conditional_edges("approve_review", route_ticket)
-    builder.add_conditional_edges("request_changes", route_ticket)
-    builder.add_conditional_edges("revise", route_ticket)
-    builder.add_conditional_edges("revise_complete", route_ticket)
-    builder.add_conditional_edges("verify", route_verify)
-    builder.add_conditional_edges("verification_pass", route_ticket)
-    builder.add_conditional_edges("verification_fail", route_ticket)
-    builder.add_conditional_edges("approve_final", route_ticket)
-    builder.add_conditional_edges("block", route_ticket)
+    for n in ("implement", "review", "revise", "verify", "block"):
+        builder.add_conditional_edges(n, route_ticket)
 
     return builder.compile(checkpointer=checkpointer)
+
+
+def _node(target: str, tracker: "Tracker | None" = None):
+    import functools
+
+    if tracker is not None:
+
+        @functools.wraps(lambda: None)
+        async def node_fn(state: TicketPipelineState) -> dict:
+            await tracker.update_state(
+                state["ticket_id"], target, state.get("project", "unknown")
+            )
+            return {"status": target}
+
+    else:
+
+        @functools.wraps(lambda: None)
+        def node_fn(state: TicketPipelineState) -> dict:
+            return {"status": target}
+
+    node_fn.__name__ = f"node_{target}"
+    return node_fn

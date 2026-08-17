@@ -17,7 +17,7 @@ from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
 from bp_agents.platform.sandbox.egress import EgressPolicy
 from bp_agents.platform.work_initiator import TrackerPoller
-from bp_agents.workflows.sdd.contracts import ReviewOutput, RevisionOutput, TddOutput
+from bp_agents.workflows.sdd.contracts import QaOutput, ReviewOutput, TddOutput
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
 from bp_agents.workflows.sdd.state import initial_ticket_state
 from bp_agents.workflows.sdd.tracker import RedmineTracker
@@ -117,8 +117,9 @@ async def main() -> None:
     async with AsyncSqliteSaver.from_conn_string(PIPELINE_DB_PATH) as checkpointer:
         broker = ContractBroker()
         broker.register("sdd", "tdd", TddOutput)
-        broker.register("sdd", "code_review", ReviewOutput)
-        broker.register("sdd", "revision", RevisionOutput)
+        broker.register("sdd", "requesting-code-review", ReviewOutput)
+        broker.register("sdd", "receiving-code-review", TddOutput)
+        broker.register("sdd", "qa", QaOutput)
         mcp = create_mcp_server(broker)
 
         pipeline = build_ticket_pipeline(
