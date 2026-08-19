@@ -6,54 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
+from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.workflows.sdd.graph import build_ticket_pipeline
-from bp_agents.workflows.sdd.state import TicketPipelineState
-
-
-def _ts(
-    status: str,
-    blocked_reason: str | None = None,
-    ticket_body: str = "",
-) -> TicketPipelineState:
-    return {
-        "ticket_id": "TICK-1",
-        "project": "project-1",
-        "ticket_body": ticket_body,
-        "status": status,
-        "tdd_output": None,
-        "review_output": None,
-        "revision_output": None,
-        "diff": None,
-        "review_approved": None,
-        "verification_passed": None,
-        "blocked_reason": blocked_reason,
-    }
-
-
-@pytest.fixture
-def target_repo() -> Path:
-    tmp = Path(tempfile.mkdtemp())
-    subprocess.run(
-        ["git", "init", "-b", "main"], cwd=tmp, capture_output=True, check=True
-    )
-    subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.name=test",
-            "-c",
-            "user.email=test@test",
-            "commit",
-            "--allow-empty",
-            "-m",
-            "initial",
-        ],
-        cwd=tmp,
-        capture_output=True,
-        check=True,
-    )
-    return tmp
+from tests.conftest import ts_ready
 
 
 @pytest.fixture
@@ -61,18 +16,6 @@ def skills_dir() -> Path:
     tmp = Path(tempfile.mkdtemp())
     (tmp / "tdd.md").write_text("# TDD skill")
     return tmp
-
-
-@pytest.fixture
-def mock_sandbox() -> MagicMock:
-    sandbox = MagicMock()
-    sandbox.create = AsyncMock(
-        return_value=SandboxSession(
-            container_id="c1", port=32768, base_url="http://localhost:32768"
-        )
-    )
-    sandbox.destroy = AsyncMock()
-    return sandbox
 
 
 @pytest.mark.asyncio
@@ -84,18 +27,41 @@ async def test_tdd_pipeline_wired_dispatch_logs_contracts(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     (target_repo / "hello.py").write_text("def hello():\n    return 'hello world'\n")
-    outcome = {
+    tdd_outcome = {
         "status": "DONE",
         "summary": "Implemented hello world",
         "test_results": {"passed": 3, "failed": 0, "skipped": 0},
         "concerns": [],
     }
+    review_outcome = {
+        "spec_compliance": True,
+        "code_quality": {"SOLID": True, "DRY": True},
+        "test_quality": {"tests.md": True},
+        "operational": True,
+        "violations": [],
+        "review_notes": ["LGTM"],
+        "action": "approved",
+    }
+    qa_outcome = {
+        "status": "PASS",
+        "stage_results": {},
+        "failed_acs": [],
+        "blocked_items": [],
+        "discovered_blockers": [],
+        "summary": "All good",
+    }
 
-    fake_dispatch = AsyncMock(return_value=outcome)
+    async def _fake_dispatch(**kwargs):
+        skill = kwargs.get("skill", "")
+        if skill == "tdd":
+            return tdd_outcome
+        if skill == "requesting-code-review":
+            return review_outcome
+        return qa_outcome
 
     import bp_agents.workflows.sdd.nodes.agent_stage as agent_stage_module
 
-    monkeypatch.setattr(agent_stage_module, "dispatch", fake_dispatch)
+    monkeypatch.setattr(agent_stage_module, "dispatch", _fake_dispatch)
 
     app = build_ticket_pipeline(
         sandbox=mock_sandbox,
@@ -112,7 +78,7 @@ async def test_tdd_pipeline_wired_dispatch_logs_contracts(
     caplog.set_level(logging.INFO)
 
     result = await app.ainvoke(
-        _ts("ready", ticket_body="Write a hello world function"),
+        ts_ready("ready", ticket_body="Write a hello world function"),
         {"configurable": {"thread_id": "TICK-1"}},
     )
 
@@ -140,9 +106,9 @@ async def test_tdd_pipeline_wired_dispatch_logs_contracts(
     ]
     assert output_contract_lines, "Output contract must be logged (AC-15)"
 
-    assert any(
-        "implementing -> awaiting-review" in m for m in messages
-    ), "TDD agent complete must transition to awaiting_review (AC-02)"
+    assert (
+        result["status"] == "awaiting_approval"
+    ), "Pipeline must complete all stages to awaiting_approval (AC-02)"
 
     log = subprocess.run(
         ["git", "log", "--oneline", "-1"],
@@ -151,9 +117,7 @@ async def test_tdd_pipeline_wired_dispatch_logs_contracts(
         text=True,
         check=True,
     )
-    assert (
-        "feat(TICK-1)" in log.stdout
-    ), "Orchestrator must commit agent changes (AC-02)"
+    assert "tdd(TICK-1)" in log.stdout, "Orchestrator must commit agent changes (AC-02)"
 
     branch = subprocess.run(
         ["git", "branch", "--show-current"],
@@ -203,13 +167,13 @@ async def test_tdd_pipeline_wired_blocked_logs_reason(
     caplog.set_level(logging.INFO)
 
     result = await app.ainvoke(
-        _ts("ready", ticket_body="Write a hello world function"),
+        ts_ready("ready", ticket_body="Write a hello world function"),
         {"configurable": {"thread_id": "TICK-2"}},
     )
 
     assert result["status"] == "blocked"
     assert result["blocked_reason"].startswith("agent:")
-    assert "utils.validators" in result["blocked_reason"]
+    assert "Missing dependency" in result["blocked_reason"]
 
     messages = [r.message for r in caplog.records]
     assert any(
@@ -236,7 +200,7 @@ async def test_tdd_pipeline_stub_routes_without_sandbox_config(
     caplog.set_level(logging.INFO)
 
     result = await app.ainvoke(
-        _ts("ready", ticket_body="Write a hello world function"),
+        ts_ready("ready", ticket_body="Write a hello world function"),
         {"configurable": {"thread_id": "TICK-3"}},
     )
 

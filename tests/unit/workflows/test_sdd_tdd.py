@@ -1,38 +1,19 @@
 import subprocess
-import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 
 from bp_agents.platform.mcp.contract_broker import ContractNotFulfilledError
-from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
+from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.workflows.sdd.contracts import TddOutput
 from bp_agents.workflows.sdd.nodes.agent_stage import (
     AgentStageNode,
+    StageConfig,
     build_input_contract,
 )
-from bp_agents.workflows.sdd.state import TicketPipelineState
-
-
-def _make_state(**overrides: str) -> TicketPipelineState:
-    base: TicketPipelineState = {
-        "ticket_id": "TICK-1",
-        "project": "project-1",
-        "ticket_body": "Write a function that returns hello world and a test.",
-        "status": "ready",
-        "tdd_output": None,
-        "review_output": None,
-        "revision_output": None,
-        "qa_output": None,
-        "diff": None,
-        "review_approved": None,
-        "verification_passed": None,
-        "blocked_reason": None,
-    }
-    base.update(**overrides)
-    return base
+from tests.conftest import ts_ready
 
 
 class TestValidateTddOutput:
@@ -126,41 +107,6 @@ class TestAgentStageNode:
     """AgentStageNode tests with mocked sandbox, dispatch, and git."""
 
     @pytest.fixture
-    def target_repo(self) -> Path:
-        tmp = Path(tempfile.mkdtemp())
-        subprocess.run(
-            ["git", "init", "-b", "main"], cwd=tmp, capture_output=True, check=True
-        )
-        subprocess.run(
-            [
-                "git",
-                "-c",
-                "user.name=test",
-                "-c",
-                "user.email=test@test",
-                "commit",
-                "--allow-empty",
-                "-m",
-                "initial",
-            ],
-            cwd=tmp,
-            capture_output=True,
-            check=True,
-        )
-        return tmp
-
-    @pytest.fixture
-    def mock_sandbox(self) -> MagicMock:
-        sandbox = MagicMock()
-        sandbox.create = AsyncMock(
-            return_value=SandboxSession(
-                container_id="c1", port=32768, base_url="http://localhost:32768"
-            )
-        )
-        sandbox.destroy = AsyncMock()
-        return sandbox
-
-    @pytest.fixture
     def node(self, target_repo, mock_sandbox) -> AgentStageNode:
         return AgentStageNode(
             sandbox=mock_sandbox,
@@ -175,14 +121,16 @@ class TestAgentStageNode:
             skills_path=str(target_repo / "skills"),
             tracker=None,
             client=None,
-            skill="tdd",
-            contract_cls=TddOutput,
-            stage_status="implementing",
-            commit=True,
-            route_result=lambda o, s: (
-                {"status": "awaiting_review", "tdd_output": o}
-                if o.status == "DONE"
-                else {"blocked_reason": f"agent: {o.status}"}
+            stage=StageConfig(
+                skill="tdd",
+                contract_cls=TddOutput,
+                stage_status="implementing",
+                commit=True,
+                route_result=lambda o, s: (
+                    {"status": "awaiting_review", "tdd_output": o}
+                    if o.status == "DONE"
+                    else {"blocked_reason": f"agent: {o.status}"}
+                ),
             ),
         )
 
@@ -207,7 +155,7 @@ class TestAgentStageNode:
         import bp_agents.workflows.sdd.nodes.agent_stage as stage_module
 
         with patch.object(stage_module, "dispatch", AsyncMock(return_value=outcome)):
-            result = await node(_make_state())
+            result = await node(ts_ready("ready"))
 
         assert result["status"] == "awaiting_review"
         assert result["tdd_output"].status == "DONE"
@@ -238,7 +186,7 @@ class TestAgentStageNode:
         import bp_agents.workflows.sdd.nodes.agent_stage as stage_module
 
         with patch.object(stage_module, "dispatch", AsyncMock(return_value=outcome)):
-            result = await node(_make_state())
+            result = await node(ts_ready("ready"))
 
         assert result.get("blocked_reason") is not None
         assert "BLOCKED" in result["blocked_reason"]
@@ -251,7 +199,7 @@ class TestAgentStageNode:
         dispatch_mock = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
 
         with patch.object(stage_module, "dispatch", dispatch_mock):
-            result = await node(_make_state())
+            result = await node(ts_ready("ready"))
 
         assert result.get("blocked_reason") is not None
         assert "connection refused" in result["blocked_reason"].lower()
@@ -266,7 +214,7 @@ class TestAgentStageNode:
         )
 
         with patch.object(stage_module, "dispatch", dispatch_mock):
-            result = await node(_make_state())
+            result = await node(ts_ready("ready"))
 
         assert result.get("blocked_reason") is not None
 
@@ -276,7 +224,7 @@ class TestAgentStageNode:
         dispatch_mock = AsyncMock(return_value={"bad": "data"})
 
         with patch.object(stage_module, "dispatch", dispatch_mock):
-            result = await node(_make_state())
+            result = await node(ts_ready("ready"))
 
         assert result.get("blocked_reason") is not None
         assert "invalid" in result["blocked_reason"].lower()

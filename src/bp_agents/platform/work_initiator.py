@@ -1,8 +1,11 @@
 import asyncio
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, Awaitable, Callable
 
 WorkCallback = Callable[[dict, str], Awaitable[None]]
+
+logger = logging.getLogger(__name__)
 
 
 class WorkInitiator(ABC):
@@ -35,7 +38,7 @@ class TrackerPoller(WorkInitiator):
                     state, thread_id = self._create_state(ticket)
                     await on_work(state, thread_id)
             except Exception:
-                pass
+                logger.exception("tracker poll error")
             try:
                 await asyncio.sleep(self._poll_interval)
             except asyncio.CancelledError:

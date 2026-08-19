@@ -62,7 +62,6 @@ class GraphRunner:
         self._bindings.append(_Binding(name=name, graph=graph, initiator=initiator))
 
     async def start(self) -> None:
-        setup_logging()
         logger.info(
             "runner starting...  graphs=%s",
             [b.name for b in self._bindings],
@@ -72,9 +71,9 @@ class GraphRunner:
         for binding in self._bindings:
             g = binding.graph
 
-            async def on_work(state: dict, thread_id: str) -> None:
+            async def on_work(state: dict, thread_id: str, _g: Any = g) -> None:
                 config = {"configurable": {"thread_id": thread_id}}
-                await g.ainvoke(state, config)
+                await _g.ainvoke(state, config)
 
             task = asyncio.create_task(binding.initiator.start(on_work))
             tasks.append(task)

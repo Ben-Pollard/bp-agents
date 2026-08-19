@@ -14,9 +14,9 @@ import httpx
 import pytest
 
 from bp_agents.platform.agent_client import OpenCodeClient
-from bp_agents.platform.agent_config import AgentConfig
-from bp_agents.platform.dispatch import OUTCOME_FILENAME, dispatch
+from bp_agents.platform.dispatch import OUTCOME_FILENAME, DispatchContext, dispatch
 from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
+from tests.conftest import base_agent_config
 
 
 class _TrackingHandler:
@@ -60,16 +60,6 @@ class _TrackingHandler:
             self.auth_called = True
             return httpx.Response(200, json={"ok": True})
         return httpx.Response(404)
-
-
-def _agent_config() -> AgentConfig:
-    return AgentConfig(
-        model="openrouter/deepseek/deepseek-v4-flash",
-        provider="openrouter",
-        permissions={"read": {"*": "allow"}, "bash": {"*": "allow"}},
-        tools={"bash": True, "read": True, "edit": True},
-        mcps={},
-    )
 
 
 def _sandbox_config() -> SandboxConfig:
@@ -133,13 +123,13 @@ async def test_dispatch_lifecycle_completes_with_polling(
             result = await dispatch(
                 sandbox=mock_sandbox,
                 sandbox_config=cfg,
-                config=_agent_config(),
+                config=base_agent_config(),
                 skill="tdd",
                 prompt="Do the thing",
                 workspace=workspace,
                 outcome_path="/data/" + OUTCOME_FILENAME,
                 api_key="sk-test-key",
-                opencode_client=oc_client,
+                ctx=DispatchContext(opencode_client=oc_client),
             )
 
     assert result["status"] == "DONE"
@@ -188,13 +178,13 @@ async def test_dispatch_polls_when_message_returns_running(
             result = await dispatch(
                 sandbox=mock_sandbox,
                 sandbox_config=cfg,
-                config=_agent_config(),
+                config=base_agent_config(),
                 skill="tdd",
                 prompt="Do the thing",
                 workspace=workspace,
                 outcome_path="/data/" + OUTCOME_FILENAME,
                 api_key="sk-test-key",
-                opencode_client=oc_client,
+                ctx=DispatchContext(opencode_client=oc_client),
             )
 
     assert result["status"] == "DONE"

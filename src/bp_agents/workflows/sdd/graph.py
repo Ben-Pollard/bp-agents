@@ -6,7 +6,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 from bp_agents.workflows.sdd.contracts import QaOutput, ReviewOutput, TddOutput
-from bp_agents.workflows.sdd.nodes.agent_stage import AgentStageNode
+from bp_agents.workflows.sdd.nodes.agent_stage import AgentStageNode, StageConfig
 from bp_agents.workflows.sdd.state import (
     TicketPipelineState,
 )
@@ -21,9 +21,13 @@ logger = logging.getLogger(__name__)
 
 ROUTE_MAP: dict[str, str] = {
     "ready": "implement",
+    "implementing": "implement",
     "awaiting_review": "review",
+    "reviewing": "review",
     "awaiting_revision": "revise",
+    "revising": "revise",
     "awaiting_verification": "verify",
+    "verifying": "verify",
 }
 
 
@@ -70,72 +74,92 @@ def build_ticket_pipeline(
     if use_stages:
         implement_node: Any = AgentStageNode(
             **base_kwargs,
-            skill="tdd",
-            contract_cls=TddOutput,
-            stage_status="implementing",
-            commit=True,
-            route_result=lambda o, s: (
-                {"status": "awaiting_review", "tdd_output": o}
-                if o.status == "DONE"
-                else {"blocked_reason": f"agent: {o.status}"}
+            stage=StageConfig(
+                skill="tdd",
+                contract_cls=TddOutput,
+                stage_status="implementing",
+                commit=True,
+                route_result=lambda o, s: (
+                    {"status": "awaiting_review", "tdd_output": o}
+                    if o.status == "DONE"
+                    else {
+                        "blocked_reason": (
+                            f"agent: {o.status}: {o.summary}"
+                            if o.status == "BLOCKED"
+                            else f"agent: {o.status}"
+                        )
+                    }
+                ),
             ),
         )
         review_node: Any = AgentStageNode(
             **base_kwargs,
-            skill="requesting-code-review",
-            contract_cls=ReviewOutput,
-            stage_status="reviewing",
-            commit=False,
-            route_result=lambda o, s: (
-                {
-                    "status": "awaiting_verification",
-                    "review_output": o,
-                    "review_approved": True,
-                }
-                if o.action == "approved"
-                else {
-                    "status": "awaiting_revision",
-                    "review_output": o,
-                    "review_approved": False,
-                }
+            stage=StageConfig(
+                skill="requesting-code-review",
+                contract_cls=ReviewOutput,
+                stage_status="reviewing",
+                commit=False,
+                route_result=lambda o, s: (
+                    {
+                        "status": "awaiting_verification",
+                        "review_output": o,
+                        "review_approved": True,
+                    }
+                    if o.action == "approved"
+                    else {
+                        "status": "awaiting_revision",
+                        "review_output": o,
+                        "review_approved": False,
+                    }
+                ),
             ),
         )
         revise_node: Any = AgentStageNode(
             **base_kwargs,
-            skill="receiving-code-review",
-            contract_cls=TddOutput,
-            stage_status="revising",
-            commit=True,
-            extra_prompt=lambda s: (
-                f"Review feedback:\n"
-                f"{json.dumps(s.get('review_output', {}).model_dump() if s.get('review_output') else {}, indent=2)}"
-                if s.get("review_output")
-                else ""
-            ),
-            route_result=lambda o, s: (
-                {"status": "awaiting_review", "tdd_output": o}
-                if o.status == "DONE"
-                else {"blocked_reason": f"agent: {o.status}"}
+            stage=StageConfig(
+                skill="receiving-code-review",
+                contract_cls=TddOutput,
+                stage_status="revising",
+                commit=True,
+                extra_prompt=lambda s: (
+                    f"Review feedback:\n"
+                    f"{json.dumps(s.get('review_output', {}).model_dump() if s.get('review_output') else {}, indent=2)}"
+                    if s.get("review_output")
+                    else ""
+                ),
+                route_result=lambda o, s: (
+                    {"status": "awaiting_review", "tdd_output": o}
+                    if o.status == "DONE"
+                    else {
+                        "blocked_reason": (
+                            f"agent: {o.status}: {o.summary}"
+                            if o.status == "BLOCKED"
+                            else f"agent: {o.status}"
+                        )
+                    }
+                ),
             ),
         )
         qa_node: Any = AgentStageNode(
             **base_kwargs,
-            skill="qa",
-            contract_cls=QaOutput,
-            stage_status="verifying",
-            commit=False,
-            route_result=lambda o, s: (
-                {
-                    "status": "awaiting_approval",
-                    "qa_output": o,
-                    "verification_passed": True,
-                }
-                if o.status == "PASS"
-                else {
-                    "status": "awaiting_revision",
-                    "qa_output": o,
-                    "verification_passed": False,
-                }
+            stage=StageConfig(
+                skill="qa",
+                contract_cls=QaOutput,
+                stage_status="verifying",
+                commit=False,
+                route_result=lambda o, s: (
+                    {
+                        "status": "awaiting_approval",
+                        "qa_output": o,
+                        "verification_passed": True,
+                    }
+                    if o.status == "PASS"
+                    else {
+                        "status": "awaiting_revision",
+                        "qa_output": o,
+                        "verification_passed": False,
+                    }
+                ),
             ),
         )
     else:

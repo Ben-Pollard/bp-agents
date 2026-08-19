@@ -21,7 +21,7 @@ The SDD pipeline's ticket lifecycle states: ready, implementing, awaiting_review
 _Avoid_: Status, phase
 
 **StageName** (SDD):
-The SDD pipeline's skill stages: tdd, code_review, revision, minimizing_code, behavioral_verify, deterministic_gate, await_approval, merge.
+The SDD pipeline's skill stages: implement (tdd), review (requesting-code-review), revise (receiving-code-review), verify (qa), block.
 
 **Intervention**:
 A human action on a ticket: approve, reject, realign, or unblock. Recorded with actor, timestamp, and reason.

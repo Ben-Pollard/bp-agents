@@ -1,17 +1,16 @@
 import subprocess
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langgraph.graph import END
 
-from bp_agents.platform.sandbox.config import SandboxConfig, SandboxSession
+from bp_agents.platform.sandbox.config import SandboxConfig
 from bp_agents.workflows.sdd.graph import (
     build_ticket_pipeline,
     route_ticket,
 )
-from bp_agents.workflows.sdd.state import TicketPipelineState
+from tests.conftest import ts_ready
 
 
 def test_build_ticket_pipeline_compiles() -> None:
@@ -19,62 +18,43 @@ def test_build_ticket_pipeline_compiles() -> None:
     assert app is not None
 
 
-def _ts(
-    status: str,
-    review_approved: bool | None = None,
-    verification_passed: bool | None = None,
-    blocked_reason: str | None = None,
-    ticket_body: str = "",
-) -> TicketPipelineState:
-    return {
-        "ticket_id": "TICK-1",
-        "project": "project-1",
-        "ticket_body": ticket_body,
-        "status": status,
-        "tdd_output": None,
-        "review_output": None,
-        "revision_output": None,
-        "qa_output": None,
-        "diff": None,
-        "review_approved": review_approved,
-        "verification_passed": verification_passed,
-        "blocked_reason": blocked_reason,
-    }
-
-
 @pytest.mark.parametrize(
     ("status", "expected"),
     [
         ("ready", "implement"),
-        ("implementing", END),
+        ("implementing", "implement"),
         ("awaiting_review", "review"),
+        ("reviewing", "review"),
         ("awaiting_revision", "revise"),
-        ("revising", END),
+        ("revising", "revise"),
         ("awaiting_verification", "verify"),
+        ("verifying", "verify"),
         ("awaiting_approval", END),
         ("done", END),
         ("blocked", END),
     ],
 )
 def test_route_ticket_returns_next_node(status: str, expected: str) -> None:
-    assert route_ticket(_ts(status)) == expected
+    assert route_ticket(ts_ready(status)) == expected
 
 
 def test_route_ticket_returns_block_when_blocked_reason() -> None:
-    assert route_ticket(_ts("ready", blocked_reason="blocking issue")) == "block"
+    assert route_ticket(ts_ready("ready", blocked_reason="blocking issue")) == "block"
 
 
 def test_route_ticket_returns_block_when_blocked_reason_and_implementing() -> None:
-    assert route_ticket(_ts("implementing", blocked_reason="dep on API")) == "block"
+    assert (
+        route_ticket(ts_ready("implementing", blocked_reason="dep on API")) == "block"
+    )
 
 
 def test_route_ticket_ignores_blocked_reason_when_already_blocked() -> None:
-    assert route_ticket(_ts("blocked", blocked_reason="still blocked")) == END
+    assert route_ticket(ts_ready("blocked", blocked_reason="still blocked")) == END
 
 
 def test_pipeline_advances_ready_to_blocked_without_sandbox() -> None:
     app = build_ticket_pipeline()
-    initial = _ts("ready")
+    initial = ts_ready("ready")
     result = app.invoke(initial, {"configurable": {"thread_id": "TICK-1"}})
     assert result["status"] == "blocked"
     assert result["blocked_reason"] is not None
@@ -84,7 +64,7 @@ def test_pipeline_advances_ready_to_blocked_without_sandbox() -> None:
 def test_pipeline_flow_from_awaiting_revision_without_sandbox() -> None:
     app = build_ticket_pipeline()
     config = {"configurable": {"thread_id": "TICK-3"}}
-    initial = _ts("awaiting_revision")
+    initial = ts_ready("awaiting_revision")
     result = app.invoke(initial, config)
     assert result["status"] == "blocked"
 
@@ -92,48 +72,13 @@ def test_pipeline_flow_from_awaiting_revision_without_sandbox() -> None:
 def test_pipeline_flow_from_awaiting_verification_without_sandbox() -> None:
     app = build_ticket_pipeline()
     config = {"configurable": {"thread_id": "TICK-4"}}
-    initial = _ts("awaiting_verification")
+    initial = ts_ready("awaiting_verification")
     result = app.invoke(initial, config)
     assert result["status"] == "blocked"
 
 
 class TestTddGraphWire:
     """Tracer bullet: ticket flows through the graph with a mocked AgentStageNode dispatch."""
-
-    @pytest.fixture
-    def target_repo(self) -> Path:
-        tmp = Path(tempfile.mkdtemp())
-        subprocess.run(
-            ["git", "init", "-b", "main"], cwd=tmp, capture_output=True, check=True
-        )
-        subprocess.run(
-            [
-                "git",
-                "-c",
-                "user.name=test",
-                "-c",
-                "user.email=test@test",
-                "commit",
-                "--allow-empty",
-                "-m",
-                "initial",
-            ],
-            cwd=tmp,
-            capture_output=True,
-            check=True,
-        )
-        return tmp
-
-    @pytest.fixture
-    def mock_sandbox(self) -> MagicMock:
-        sandbox = MagicMock()
-        sandbox.create = AsyncMock(
-            return_value=SandboxSession(
-                container_id="c1", port=32768, base_url="http://localhost:32768"
-            )
-        )
-        sandbox.destroy = AsyncMock()
-        return sandbox
 
     async def test_ready_ticket_with_tdd_success_reaches_awaiting_review(
         self,
@@ -197,7 +142,7 @@ class TestTddGraphWire:
             stage_module, "dispatch", AsyncMock(side_effect=_side_effect)
         ):
             result = await app.ainvoke(
-                _ts("ready", ticket_body="Write a hello world function"),
+                ts_ready("ready", ticket_body="Write a hello world function"),
                 {"configurable": {"thread_id": "TICK-1"}},
             )
 
@@ -261,7 +206,7 @@ class TestTddGraphWire:
             stage_module, "dispatch", AsyncMock(side_effect=_side_effect)
         ):
             result = await app.ainvoke(
-                _ts("ready", ticket_body="Write a hello world function"),
+                ts_ready("ready", ticket_body="Write a hello world function"),
                 {"configurable": {"thread_id": "TICK-2"}},
             )
 

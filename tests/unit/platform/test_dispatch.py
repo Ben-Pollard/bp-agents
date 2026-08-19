@@ -11,6 +11,7 @@ from bp_agents.platform.agent_config import AgentConfig
 from bp_agents.platform.dispatch import (
     OUTCOME_FILENAME,
     PROVIDER_DEFINITIONS,
+    DispatchContext,
     dispatch,
 )
 from bp_agents.platform.mcp.contract_broker import (
@@ -450,7 +451,7 @@ async def test_dispatch_injects_otel_env_var(
             workspace=workspace,
             outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
             api_key="sk-test-key",
-            otel_port=4318,
+            ctx=DispatchContext(otel_port=4318),
         )
 
     create_call = mock_sandbox.create.call_args
@@ -522,8 +523,7 @@ async def test_dispatch_with_broker_accepts_contract(
             workspace=workspace,
             outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
             api_key="sk-test-key",
-            broker=broker,
-            mcp_port=8001,
+            ctx=DispatchContext(broker=broker, mcp_port=8001),
         )
 
     assert result["status"] == "DONE"
@@ -588,8 +588,7 @@ async def test_dispatch_with_broker_no_submission_raises(
                 workspace=workspace,
                 outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
                 api_key="sk-test-key",
-                broker=broker,
-                mcp_port=8001,
+                ctx=DispatchContext(broker=broker, mcp_port=8001),
             )
 
     mock_sandbox.destroy.assert_called_once()
@@ -630,8 +629,7 @@ async def test_dispatch_with_broker_exhausted_attempts_raises(
                 workspace=workspace,
                 outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
                 api_key="sk-test-key",
-                broker=broker,
-                mcp_port=8001,
+                ctx=DispatchContext(broker=broker, mcp_port=8001),
             )
 
     mock_sandbox.destroy.assert_called_once()
@@ -679,8 +677,7 @@ async def test_dispatch_broker_injects_mcp_defs(
             workspace=workspace,
             outcome_path=WORKSPACE_MOUNT_PATH + "/" + OUTCOME_FILENAME,
             api_key="sk-test-key",
-            broker=broker,
-            mcp_port=8001,
+            ctx=DispatchContext(broker=broker, mcp_port=8001),
         )
 
     opencode_path = os.path.join(workspace, "opencode.json")

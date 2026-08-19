@@ -4,6 +4,7 @@ import logging
 import os
 import secrets
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -52,6 +53,14 @@ PROVIDER_DEFINITIONS: dict = {
 OUTCOME_FILENAME = "outcome.json"
 HEALTH_CHECK_RETRIES = 30
 HEALTH_CHECK_INTERVAL = 1.0
+
+
+@dataclass
+class DispatchContext:
+    opencode_client: OpenCodeClient | None = None
+    broker: "ContractBroker | None" = None
+    otel_port: int | None = None
+    mcp_port: int | None = None
 
 
 async def _stream_container_logs(
@@ -119,10 +128,7 @@ async def dispatch(
     workspace: str,
     outcome_path: str,
     api_key: str,
-    opencode_client: OpenCodeClient | None = None,
-    broker: "ContractBroker | None" = None,
-    otel_port: int | None = None,
-    mcp_port: int | None = None,
+    ctx: DispatchContext | None = None,
 ) -> dict:
     """Full agent lifecycle.
 
@@ -136,6 +142,7 @@ async def dispatch(
     8. Destroy container
     Returns validated outcome dict. Raises on failure — container always destroyed.
     """
+    c = ctx or DispatchContext()
     if not api_key:
         raise RuntimeError(
             f"dispatch: {config.provider} api_key is empty — set {config.provider.upper()}_API_KEY in environment"
@@ -157,10 +164,10 @@ async def dispatch(
         )
 
     mcp_defs: dict = {}
-    if broker is not None and mcp_port is not None:
+    if c.broker is not None and c.mcp_port is not None:
         mcp_defs["contract-broker"] = {
             "type": "remote",
-            "url": f"http://orchestrator:{mcp_port}/mcp",
+            "url": f"http://orchestrator:{c.mcp_port}/mcp",
         }
 
     opencode_config = to_opencode_json(
@@ -168,7 +175,7 @@ async def dispatch(
         PROVIDER_DEFINITIONS,
         mcp_defs,
         skills_path=skills_path,
-        otel_enabled=otel_port is not None,
+        otel_enabled=c.otel_port is not None,
         plugins=["otel-observability.ts"],
     )
     opencode_path = os.path.join(workspace, "opencode.json")
@@ -192,16 +199,16 @@ async def dispatch(
         logger.debug("copied OTEL plugin to %s", _plugin_dst)
 
     broker_token: str | None = None
-    if broker is not None:
+    if c.broker is not None:
         run_id = secrets.token_urlsafe(16)
-        broker_token = broker.create_binding("sdd", skill, run_id, max_attempts=3)
+        broker_token = c.broker.create_binding("sdd", skill, run_id, max_attempts=3)
 
     env = {
         **{k: v for k, v in sandbox_config.env.items() if k not in CREDENTIAL_KEYS},
         "outcome_path": outcome_path,
     }
-    if otel_port is not None:
-        env["OTEL_EXPORTER_OTLP_ENDPOINT"] = f"http://orchestrator:{otel_port}"
+    if c.otel_port is not None:
+        env["OTEL_EXPORTER_OTLP_ENDPOINT"] = f"http://orchestrator:{c.otel_port}"
     if broker_token is not None:
         env["CONTRACT_BROKER_TOKEN"] = broker_token
 
@@ -239,8 +246,8 @@ async def dispatch(
         sandbox_session.container_id,
         sandbox_session.base_url,
     )
-    own_client = opencode_client is None
-    client = opencode_client or OpenCodeClient(sandbox_session.base_url)
+    own_client = c.opencode_client is None
+    client = c.opencode_client or OpenCodeClient(sandbox_session.base_url)
     oc_session = None
 
     try:
@@ -268,12 +275,12 @@ async def dispatch(
 
         outcome_host_path = os.path.join(workspace, OUTCOME_FILENAME)
 
-        if broker is not None and broker_token is not None:
-            accepted = broker.check_acceptance(broker_token)
+        if c.broker is not None and broker_token is not None:
+            accepted = c.broker.check_acceptance(broker_token)
             if accepted is not None:
                 logger.debug("broker accepted contract for token=%s", broker_token[:8])
                 return accepted.contract
-            status = broker.submission_status(broker_token)
+            status = c.broker.submission_status(broker_token)
             if status == "exhausted":
                 raise ContractNotFulfilledError(
                     "agent: contract validation failed - max attempts exceeded"

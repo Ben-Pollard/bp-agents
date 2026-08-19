@@ -4,6 +4,7 @@ import logging
 import os
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -11,7 +12,7 @@ import httpx
 from pydantic import BaseModel
 
 from bp_agents.platform.agent_client import OpenCodeClient
-from bp_agents.platform.dispatch import OUTCOME_FILENAME, dispatch
+from bp_agents.platform.dispatch import OUTCOME_FILENAME, DispatchContext, dispatch
 from bp_agents.platform.mcp.contract_broker import ContractNotFulfilledError
 from bp_agents.platform.sandbox import Sandbox, SandboxConfig
 from bp_agents.platform.sandbox.config import WORKSPACE_MOUNT_PATH
@@ -25,6 +26,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _BP_AGENTS_SEGMENTS = {"bp-agents", ".agents"}
+
+
+@dataclass
+class StageConfig:
+    skill: str = ""
+    contract_cls: type[BaseModel] = BaseModel
+    stage_status: str = ""
+    route_result: Callable[[Any, TicketPipelineState], dict] | None = None
+    commit: bool = False
+    extra_prompt: Callable[[TicketPipelineState], str] | None = None
+    max_retries: int = 3
 
 
 def _run_git(repo_path: str, *args: str) -> None:
@@ -74,16 +86,10 @@ class AgentStageNode:
         skills_path: str,
         tracker: "Tracker | None" = None,
         client: OpenCodeClient | None = None,
-        max_retries: int = 3,
         otel_port: int | None = None,
         broker: "ContractBroker | None" = None,
         mcp_port: int | None = None,
-        skill: str = "",
-        contract_cls: type[BaseModel] = BaseModel,
-        stage_status: str = "",
-        route_result: (Callable[[Any, TicketPipelineState], dict] | None) = None,
-        commit: bool = False,
-        extra_prompt: (Callable[[TicketPipelineState], str] | None) = None,
+        stage: StageConfig | None = None,
     ) -> None:
         self._sandbox = sandbox
         self._sandbox_config = sandbox_config
@@ -91,16 +97,17 @@ class AgentStageNode:
         self._skills_path = skills_path
         self._tracker = tracker
         self._client = client
-        self._max_retries = max_retries
         self._otel_port = otel_port
         self._broker = broker
         self._mcp_port = mcp_port
-        self._skill = skill
-        self._contract_cls = contract_cls
-        self._stage_status = stage_status
-        self._route_result = route_result or (lambda o, s: {"status": "blocked"})
-        self._commit = commit
-        self._extra_prompt = extra_prompt
+        cfg = stage or StageConfig()
+        self._skill = cfg.skill
+        self._contract_cls = cfg.contract_cls
+        self._stage_status = cfg.stage_status
+        self._route_result = cfg.route_result or (lambda o, s: {"status": "blocked"})
+        self._commit = cfg.commit
+        self._extra_prompt = cfg.extra_prompt
+        self._max_retries = cfg.max_retries
 
     async def __call__(self, state: TicketPipelineState) -> dict:
         ticket_id = state["ticket_id"]
@@ -148,10 +155,12 @@ class AgentStageNode:
                     workspace=self._target_repo_path,
                     outcome_path=sandbox_outcome_path,
                     api_key=api_key,
-                    opencode_client=self._client,
-                    otel_port=self._otel_port,
-                    broker=self._broker,
-                    mcp_port=self._mcp_port,
+                    ctx=DispatchContext(
+                        opencode_client=self._client,
+                        otel_port=self._otel_port,
+                        broker=self._broker,
+                        mcp_port=self._mcp_port,
+                    ),
                 )
             except (
                 httpx.ConnectError,

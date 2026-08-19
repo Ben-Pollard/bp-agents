@@ -16,16 +16,20 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import docker
 import pytest
 
-from bp_agents.platform.agent_config import AgentConfig
 from bp_agents.platform.dispatch import OUTCOME_FILENAME, dispatch
 from bp_agents.platform.sandbox.config import WORKSPACE_MOUNT_PATH, SandboxConfig
 from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
 from bp_agents.workflows.sdd.nodes.agent_stage import (
     build_input_contract,
     input_contract_to_prompt,
+)
+from tests.conftest import (
+    api_key_available,
+    base_agent_config,
+    docker_available,
+    sandbox_image_available,
 )
 
 _TEST_IMAGE_TAG = "bp-agents-test-sandbox:latest"
@@ -44,53 +48,13 @@ def _build_sandbox_image() -> None:
     )
 
 
-def _image_available() -> bool:
-    try:
-        docker.from_env().images.get(_TEST_IMAGE_TAG)
-        return True
-    except docker.errors.ImageNotFound:
-        return False
-
-
-def _docker_available() -> bool:
-    try:
-        docker.from_env().ping()
-        return True
-    except Exception:
-        return False
-
-
-def _api_key_available() -> bool:
-    return bool(os.getenv("OPENROUTER_API_KEY"))
-
-
-def _agent_config() -> AgentConfig:
-    return AgentConfig(
-        model="openrouter/deepseek/deepseek-v4-flash",
-        provider="openrouter",
-        permissions={
-            "read": {"*": "allow"},
-            "bash": {"*": "allow"},
-            "edit": {"*": "allow"},
-        },
-        tools={
-            "bash": True,
-            "read": True,
-            "edit": True,
-            "task": False,
-            "webfetch": False,
-        },
-        mcps={},
-    )
-
-
 pytestmark = [
     pytest.mark.skipif(
-        not _docker_available(),
+        not docker_available(),
         reason="Docker not available",
     ),
     pytest.mark.skipif(
-        not _api_key_available(),
+        not api_key_available(),
         reason="OPENROUTER_API_KEY not set",
     ),
 ]
@@ -98,9 +62,11 @@ pytestmark = [
 
 @pytest.fixture(scope="session")
 def sandbox_image() -> None:
-    if not _image_available():
+    if not sandbox_image_available(_TEST_IMAGE_TAG):
         _build_sandbox_image()
-    assert _image_available(), f"failed to build {_TEST_IMAGE_TAG}"
+    assert sandbox_image_available(
+        _TEST_IMAGE_TAG
+    ), f"failed to build {_TEST_IMAGE_TAG}"
 
 
 @pytest.mark.asyncio
@@ -152,7 +118,7 @@ async def test_ticket_to_sandbox_first_message(
         result = await dispatch(
             sandbox=sandbox,
             sandbox_config=cfg,
-            config=_agent_config(),
+            config=base_agent_config(),
             skill="tdd",
             prompt=prompt,
             workspace=workspace,
