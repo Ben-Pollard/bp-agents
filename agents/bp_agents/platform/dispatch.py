@@ -163,7 +163,12 @@ async def dispatch(
             f"contents: {[p.name for p in skill_dirs]}"
         )
 
-    mcp_defs: dict = {}
+    mcp_defs: dict = {
+        "firecrawl": {
+            "type": "remote",
+            "url": "http://firecrawl-mcp:8002/mcp",
+        },
+    }
     if c.broker is not None and c.mcp_port is not None:
         mcp_defs["contract-broker"] = {
             "type": "remote",

@@ -96,7 +96,8 @@ async def main() -> None:
             https_proxy="http://egress-proxy:8080",
             dns_servers=["8.8.8.8"],
             extra_hosts={
-                h: _sandbox_net_ip(h) for h in ("orchestrator", "egress-proxy")
+                h: _sandbox_net_ip(h)
+                for h in ("orchestrator", "egress-proxy", "firecrawl-mcp")
             },
             env=sandbox_env,
             command=[

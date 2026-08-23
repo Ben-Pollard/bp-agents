@@ -16,6 +16,7 @@ DEFAULT_ALLOWLIST = [
     "context7.com",
     "api.context7.com",
     "orchestrator",
+    "langfuse",
 ]
 
 logger = logging.getLogger(__name__)

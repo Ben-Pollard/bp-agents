@@ -4,7 +4,8 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
-COPY . .
+COPY agents/ .
+COPY scripts/ scripts/
 
 RUN pip install uv && uv sync --no-dev --no-cache
 

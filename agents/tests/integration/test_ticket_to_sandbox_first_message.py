@@ -36,7 +36,7 @@ _TEST_IMAGE_TAG = "bp-agents-test-sandbox:latest"
 
 
 def _build_sandbox_image() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     dockerfile = root / "Dockerfile.sandbox"
     context = root
     subprocess.run(

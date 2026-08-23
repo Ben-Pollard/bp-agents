@@ -8,6 +8,7 @@ dist/
 state.json
 .opencode/opencode-loop/
 .env
+.db*
 
 .playwright-mcp/
 
@@ -15,3 +16,13 @@ state.json
 gvisor.tar.bz2
 gvisor.tar.bz2.sha512
 redmine-home
+
+.opencode/skills/langfuse/
+
+opencode.json
+
+prompt_run_checkpoints.db
+
+prompt_run_checkpoints.db-shm
+
+prompt_run_checkpoints.db-wal

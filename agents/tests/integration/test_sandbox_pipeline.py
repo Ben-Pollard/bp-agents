@@ -12,7 +12,7 @@ from bp_agents.platform.sandbox.docker_sandbox import DockerSandbox
 
 
 def _load_compose() -> dict:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     return yaml.safe_load((root / "docker-compose.yml").read_text())
 
 
@@ -29,7 +29,7 @@ def test_compose_egress_proxy_enforces_allowlist() -> None:
 def test_compose_allowlist_covers_default_allowlist() -> None:
     """The egress blocker addon script must define a non-empty
     DEFAULT_ALLOWLIST so arbitrary internet is not reachable (AC-21/AC-22)."""
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     script = (root / "scripts" / "egress_blocker.py").read_text()
     assert "DEFAULT_ALLOWLIST = [" in script
     assert "api.openai.com" in script
@@ -40,7 +40,7 @@ def test_egress_blocker_logs_ticket_unknown_suffix() -> None:
     with a 'from ticket <id>' suffix. Since the proxy has no ticket context,
     the placeholder 'from ticket <unknown>' is used so the log format matches
     the acceptance criteria."""
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     script = (root / "scripts" / "egress_blocker.py").read_text()
     assert (
         "from ticket <unknown>" in script
@@ -48,7 +48,7 @@ def test_egress_blocker_logs_ticket_unknown_suffix() -> None:
 
 
 def _load_sandbox_dockerfile() -> str:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     return (root / "Dockerfile.sandbox").read_text()
 
 
@@ -97,7 +97,7 @@ def test_egress_blocker_reads_env_var() -> None:
     MITMPROXY_ALLOWLIST environment variable (comma-separated), falling back
     to DEFAULT_ALLOWLIST when the env var is not set. This verifies the
     config mechanism required by AC-21."""
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     script = (root / "scripts" / "egress_blocker.py").read_text()
     assert 'os.environ.get("MITMPROXY_ALLOWLIST")' in script or (
         'os.getenv("MITMPROXY_ALLOWLIST")' in script

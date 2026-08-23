@@ -6,9 +6,15 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
-      - id: pytest-unit
-        name: unit tests
-        entry: uv run pytest tests/unit
+      - id: pytest-unit-agents
+        name: unit tests (agents)
+        entry: uv run --directory agents pytest tests/unit
+        language: system
+        pass_filenames: false
+        types: [python]
+      - id: pytest-unit-firecrawl
+        name: unit tests (firecrawl-mcp)
+        entry: uv run --directory mcp/firecrawl pytest tests
         language: system
         pass_filenames: false
         types: [python]

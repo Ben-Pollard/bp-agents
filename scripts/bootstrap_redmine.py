@@ -22,7 +22,6 @@ import sys
 import time
 
 import httpx
-
 from bp_agents.workflows.sdd.contracts import TicketState
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

@@ -1,9 +1,10 @@
 services:
   postgres:
     image: postgres:16-alpine
+    env_file: .env
     environment:
       POSTGRES_USER: bp_agents
-      POSTGRES_PASSWORD: bp_agents_dev
+      POSTGRES_PASSWORD: ${BP_POSTGRES_PASSWORD}
       POSTGRES_DB: bp_agents
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bp_agents"]
@@ -17,6 +18,7 @@ services:
 
   egress-proxy:
     image: mitmproxy/mitmproxy:latest
+    env_file: .env
     command: >
       mitmdump --listen-host 0.0.0.0 --listen-port 8080
       -s /scripts/egress_blocker.py
@@ -32,13 +34,14 @@ services:
 
   redmine:
     image: redmine:6
+    env_file: .env
     ports:
       - "8082:3000"
     environment:
       REDMINE_DB_POSTGRES: redmine-db
       REDMINE_DB_PORT: 5432
-      REDMINE_DB_USERNAME: redmine
-      REDMINE_DB_PASSWORD: redmine_dev
+      REDMINE_DB_USERNAME: ${REDMINE_DB_USER}
+      REDMINE_DB_PASSWORD: ${REDMINE_DB_PASSWORD}
       REDMINE_DB_DATABASE: redmine
     depends_on:
       redmine-db:
@@ -48,9 +51,10 @@ services:
 
   redmine-db:
     image: postgres:16-alpine
+    env_file: .env
     environment:
-      POSTGRES_USER: redmine
-      POSTGRES_PASSWORD: redmine_dev
+      POSTGRES_USER: ${REDMINE_DB_USER}
+      POSTGRES_PASSWORD: ${REDMINE_DB_PASSWORD}
       POSTGRES_DB: redmine
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U redmine"]
@@ -64,6 +68,7 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
+    env_file: .env
     ports:
       - "8123:8123"
     volumes:
@@ -74,35 +79,126 @@ services:
 
   langfuse:
     image: langfuse/langfuse:latest
+    env_file: .env
     ports:
       - "8083:3000"
     environment:
-      DATABASE_URL: postgresql://bp_agents:bp_agents_dev@postgres:5432/bp_agents
+      DATABASE_URL: postgresql://bp_agents:${BP_POSTGRES_PASSWORD}@postgres:5432/bp_agents
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
       CLICKHOUSE_CLUSTER_ENABLED: "false"
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: "clickhouse"
-      NEXTAUTH_SECRET: langfuse_secret_dev_only
-      SALT: langfuse_salt_dev_only
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: ${REDIS_PASSWORD}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      SALT: ${SALT}
       NEXTAUTH_URL: http://localhost:8083
       TELEMETRY_ENABLED: "false"
-      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: "disabled"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: "langfuse"
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: "auto"
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: "http://minio:9000"
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: "events/"
+      LANGFUSE_MIGRATION_V4_WRITE_MODE: "legacy"
+      LANGFUSE_MIGRATION_V4_NATIVE_OTEL_BEHAVIOUR: "dual_write"
+      LANGFUSE_MIGRATION_V4_ALLOW_PREVIEW_OPT_IN: "false"
+      LANGFUSE_BACKGROUND_MIGRATION_V4_ENABLE_HISTORIC_BACKFILL: "false"
     depends_on:
       postgres:
         condition: service_healthy
       clickhouse:
         condition: service_started
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    networks:
+      - bp_agents
+
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://bp_agents:${BP_POSTGRES_PASSWORD}@postgres:5432/bp_agents
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: ${REDIS_PASSWORD}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      SALT: ${SALT}
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: "langfuse"
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: "auto"
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: "http://minio:9000"
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: "events/"
+      LANGFUSE_MIGRATION_V4_WRITE_MODE: "legacy"
+      LANGFUSE_MIGRATION_V4_NATIVE_OTEL_BEHAVIOUR: "dual_write"
+      LANGFUSE_MIGRATION_V4_ALLOW_PREVIEW_OPT_IN: "false"
+      LANGFUSE_BACKGROUND_MIGRATION_V4_ENABLE_HISTORIC_BACKFILL: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    networks:
+      - bp_agents
+
+  redis:
+    image: redis:7-alpine
+    env_file: .env
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bp_agents
+
+  minio:
+    image: minio/minio:latest
+    env_file: .env
+    entrypoint: sh
+    command: ['-c', 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - bp_agents
 
   redmine-setup:
     build: .
+    env_file: .env
     command: [".venv/bin/python", "scripts/bootstrap_redmine.py"]
     environment:
       REDMINE_URL: http://redmine:3000
-      ADMIN_LOGIN: admin
-      ADMIN_PASSWORD: admin
+      ADMIN_LOGIN: ${ADMIN_LOGIN}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       BP_PROJECT_NAME: default
       BP_PROJECT_ID: default
       BP_ENV_OUTPUT: /data/env/.env
@@ -123,6 +219,7 @@ services:
 
   orchestrator:
     build: .
+    env_file: .env
     environment:
       BP_LOG_LEVEL: ${BP_LOG_LEVEL:-info}
       BP_TARGET_REPO_PATH: ${BP_TARGET_REPO_PATH:-/data/repos/default-project}
@@ -152,10 +249,22 @@ services:
       - bp_agents
       - sandbox_net
 
+  firecrawl-mcp:
+    build:
+      context: ./mcp/firecrawl
+    env_file: .env
+    environment:
+      FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-http://firecrawl:3002}
+      FC_MCP_PORT: "8002"
+    networks:
+      - bp_agents
+      - sandbox_net
+
 volumes:
   postgres_data:
   redmine_db_data:
   clickhouse_data:
+  minio_data:
   bp_env:
 
 networks:
